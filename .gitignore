@@ -3,3 +3,8 @@ __pycache__
 .DS_Store
 .cache
 downloads/
+bin/
+lib/
+localscribe.py
+pyvenv.cfg
+venv/

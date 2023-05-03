@@ -50,6 +50,6 @@ def summarize(podcast_url, source, max_sentences=10):
     
     print(f'Completed summarization for ({podcast_url})')
     
-# summarize("https://open.spotify.com/episode/0YqflJb8Wco8IDdGHPNTu8", "spotify", 12)
+#summarize("https://open.spotify.com/episode/0YqflJb8Wco8IDdGHPNTu8", "spotify", 12)
 summarize("https://www.youtube.com/watch?v=GkZz2I6sK08", "youtube", 12)
 

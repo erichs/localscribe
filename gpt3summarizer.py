@@ -88,7 +88,10 @@ class GPT3Summarizer:
                 buffer = ""
                 token_count = 0
                 
-        print(f'↪ Chunks: {len(chunks)} ({transcript.count(".")} sentences)')
+        if buffer:
+            chunks.append(buffer)
+
+        print(f'↪ Chunks: {len(chunks)} ({len(sentences)} sentences)')
         
         return chunks
 
@@ -96,12 +99,16 @@ class GPT3Summarizer:
         
         print(f'🤖 Initializing GPT-3 summarizer...')
         print(f'↪ Using model: {self.model_engine}')
+        print(f'↪ transcript characters: {len(transcript)}')
 
         # Split the transcript into chunks
         chunks = self.split_into_chunks(transcript)
+        print(f'↪ transcript chunks: {len(chunks)}')
             
         # Process each chunk with GPT-3
         summaries, tokens_used = self.process_chunks(chunks)
+        for summary in summaries:
+            print(f'\t↪ {summary}')
         
         full_summary = "\n\n".join(summaries)
         
