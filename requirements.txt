@@ -1,7 +1,5 @@
-dotenv
+python-dotenv
 requests
-json
-urllib
 pydub
 spotipy
 openai

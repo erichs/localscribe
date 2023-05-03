@@ -41,7 +41,7 @@ class GPT3Summarizer:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                        {"role": "system", "content": "You are an AI assistant that summarizes podcasts"},
+                        {"role": "system", "content": "You are an AI assistant that summarizes transcripts"},
                         {"role": "user", "content": prompt},
                     ]
             )
@@ -62,7 +62,7 @@ class GPT3Summarizer:
         for chunk in chunks:
 
             # Define the GPT-3 prompt for summarization
-            prompt = f"Summarize the following podcast partial transcript into sentences:\n\n{chunk}\n\nSummary:"
+            prompt = f"Summarize the following partial transcript into sentences:\n\n{chunk}\n\nSummary:"
             
             # Call the GPT-3 API to generate the summary
             summary, token_count = self.process_gpt3(prompt)
@@ -95,39 +95,42 @@ class GPT3Summarizer:
         
         return chunks
 
-    def summarize(self, file_id, transcript, max_sentences):
+    def summarize(self, audio_path, transcript, max_sentences):
+
+        file_id = os.path.basename(audio_path)
+        dir_name = os.path.dirname(audio_path)
         
         print(f'🤖 Initializing GPT-3 summarizer...')
         print(f'↪ Using model: {self.model_engine}')
-        print(f'↪ transcript characters: {len(transcript)}')
+        print(f'↪ Transcript characters: {len(transcript)}')
 
         # Split the transcript into chunks
         chunks = self.split_into_chunks(transcript)
-        print(f'↪ transcript chunks: {len(chunks)}')
+        print(f'↪ Transcript chunks: {len(chunks)}')
             
         # Process each chunk with GPT-3
         summaries, tokens_used = self.process_chunks(chunks)
-        for summary in summaries:
-            print(f'\t↪ {summary}')
         
         full_summary = "\n\n".join(summaries)
         
         # save the full summary to a file
-        with open(f"downloads/gpt3/{file_id}_{self.model_engine}_full.txt", "w") as f:
+        summary_file = os.path.join(dir_name, 'processed/gpt3', f"{file_id}_{self.model_engine}_full.txt")
+        with open(summary_file, "w") as f:
             f.write(full_summary)
-            print(f'↪ Full summary saved to {file_id}_{self.model_engine}_full.txt')
+            print(f'↪ Full summary saved to {summary_file}')
             
             
         # Split the summary into sentences
-        prompt = f"Instructions:\nSummarize the following podcast text into a list of {max_sentences} sentences\nContextualize the topics to the podcast\nDon't mention the podcast itself in the summary.\n\nText: {full_summary}\n\nSummary:"
+        prompt = f"Instructions:\nSummarize the following text into a list of {max_sentences} sentences\nContextualize the topics to the transcript\nDon't mention the transcript itself in the summary.\n\nText: {full_summary}\n\nSummary:"
         summary, token_count = self.process_gpt3(prompt)
         
         tokens_used += token_count
         api_cost = float(tokens_used / 1000) * float(self.openai_price)
         print(f'↪ 💵 GPT3 cost: ${api_cost:.2f} ({tokens_used} tokens)')
         
-        # save the full summary to a file
+        # save the brief summary to a file
+        summary_file = os.path.join(dir_name, 'processed/gpt3', f"{file_id}_{self.model_engine}_summary.txt")
         with open(f"downloads/gpt3/{file_id}_{self.model_engine}_summary.txt", "w") as f:
             f.write(summary)
-            print(f'↪ {max_sentences} sentence summary saved to {file_id}_{self.model_engine}_summary.txt')
+            print(f'↪ Brief {max_sentences} sentence summary saved to {summary_file}')
         

@@ -75,6 +75,12 @@ class WhisperTranscriber:
                 file = open(audio, "rb")
                 response = openai.Audio.transcribe("whisper-1", file)
 
+                print()
+                # pretty print response
+                for key, value in response.items():
+                    print(f"\t\t↪ {key}: {value}")
+                print()
+
                 # Check for errors in the API response
                 if "error" in response:
                     error_msg = response["error"]["message"]

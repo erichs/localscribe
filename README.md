@@ -1,8 +1,10 @@
-# Podcast Summarizer
+# LocalScribe: Transcribe and Summarize MP3s in Local Directory
 
-![Podcast Summarizer](https://user-images.githubusercontent.com/99987044/222886120-bc389e06-16bf-45e3-90a4-e7f62fd3b15b.png)
+This is a python script that watches a directory for MP3 files. When a new file is encountered, it will convert the speech to text via OpenAI's Whisper API, summarize the text via OpenAI's GPT3 API, and chunk everything to fit within the limits of Whisper and GPT3 APIs. The script will also display the costs for both Whisper and GPT3 API usage.
 
-This is a python script that can download the audio for a given podcast source from either YouTube or Spotify, convert the speech to text via OpenAI's Whisper API, summarize the text via OpenAI's GPT3 API (using either the GPT3 chat model or GPT3 Davinci text model), and chunk everything to fit within the limits of Whisper and GPT3 APIs.
+## Use Cases
+
+Transcribe downloaded podcasts, meeting notes, memo dictation, etc. In my case, I happen to use an app called [RecUp](https://apps.apple.com/us/app/recup-record-to-the-cloud/id416288287) that records to cloud storage that is also sync'ed locally to disk. I point LocalScribe at this sync'ed directory location for automatic transcription and summarization of RecUp MP3 recordings.
 
 ## Installation
 
@@ -12,16 +14,16 @@ To use this script, you will need to install the necessary requirements. You can
 
 ## Usage
 
-To use this script, you will need to add your YouTube / Spotify URL to the summarizer.py file. Then, you can run the script by running the following command in your terminal:
+Copy `.env.example` to `.env`, and fill out the variables there.
 
-`python summarizer.py`
+Then, you can run the script by running the following command in your terminal:
 
-The script will download the audio for your podcast source, convert the speech to text via OpenAI's Whisper API, summarize the text via OpenAI's GPT3 API, and chunk everything to fit within the limits of Whisper and GPT3 APIs. The script will also display the costs for both Whisper and GPT3 API usage.
-
-## Optional Usage
-
-For YouTube sources, you can skip the Whisper API for transcription and use the YouTube video's subtitles if they're available. To do this, you will need to modify the code in the summarizer.py file.
+`python localscribe.py`
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE.md file for details.
+
+## Credits
+
+This is a fork and modification of [kyon-eth/podcast-summarizer](https://github.com/kyon-eth/podcast-summarizer).
