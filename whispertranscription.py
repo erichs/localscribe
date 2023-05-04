@@ -54,7 +54,7 @@ class WhisperTranscriber:
             
         return audio_list
         
-    def transcribe(self, audio_path):
+    def transcribe(self, audio_path, processed_dir):
         
         print(f'🗣️  Initializing Whisper transcriber...')
         
@@ -67,40 +67,24 @@ class WhisperTranscriber:
             
             print(f'\t↪ Transcribing {audio}...')
             
-            # Check if the transcript already exists
-            transcript_path = f"{audio.split('.')[0]}.txt"
-            if not os.path.exists(transcript_path):
+            # Convert the MP3 file to text using Whisper API
+            file = open(audio, "rb")
+            response = openai.Audio.transcribe("whisper-1", file)
 
-                # Convert the MP3 file to text using Whisper API
-                file = open(audio, "rb")
-                response = openai.Audio.transcribe("whisper-1", file)
+            # Check for errors in the API response
+            if "error" in response:
+                error_msg = response["error"]["message"]
+                raise Exception(f"⚠️ Transcription error: {error_msg}")
 
-                print()
-                # pretty print response
-                for key, value in response.items():
-                    print(f"\t\t↪ {key}: {value}")
-                print()
-
-                # Check for errors in the API response
-                if "error" in response:
-                    error_msg = response["error"]["message"]
-                    raise Exception(f"⚠️ Transcription error: {error_msg}")
-
-                # Extract the transcript from the API response
-                transcript = response["text"].strip()
-
-                # Save the transcript to a text file
-                with open(transcript_path, "w") as f:
-                    f.write(transcript)
-                    transcriptions.append(transcript)
-                    print(f"\t\t↪ saved transcript to {audio.split('.')[0]}.txt (words: {len(transcript.split())}")
-            else:
-                # Load the transcript from the text file
-                with open(transcript_path, "r") as f:
-                    transcriptions.append(f.read())
-                pass
+            # Extract the transcript from the API response
+            transcript = response["text"].strip()
                 
         full_transcript = ' '.join(transcriptions)
         print(f'↪ Total words: {len(full_transcript.split())} -- characters: {len(full_transcript)}')
+        basename = os.path.basename(audio_path)
+        transcript_path = os.path.join(processed_dir, 'whisper', os.path.splitext(basename)[0] + '-transcript.txt')
+        with open(transcript_path, 'w') as f:
+            f.write(transcript)
+            print(f'↪ Full transcript saved to {transcript_path}')
             
         return full_transcript
