@@ -95,7 +95,7 @@ class GPT3Summarizer:
         
         return chunks
 
-    def summarize(self, audio_path, transcript, max_sentences):
+    def summarize(self, audio_path, transcript, max_sentences, processed_dir):
 
         file_id = os.path.basename(audio_path)
         dir_name = os.path.dirname(audio_path)
@@ -114,7 +114,7 @@ class GPT3Summarizer:
         full_summary = "\n\n".join(summaries)
         
         # save the full summary to a file
-        summary_file = os.path.join(dir_name, 'processed/gpt3', f"{file_id}_{self.model_engine}_full.txt")
+        summary_file = os.path.join(processed_dir, 'gpt3', f"{file_id}_{self.model_engine}_full.txt")
         with open(summary_file, "w") as f:
             f.write(full_summary)
             print(f'↪ Full summary saved to {summary_file}')
@@ -129,8 +129,8 @@ class GPT3Summarizer:
         print(f'↪ 💵 GPT3 cost: ${api_cost:.2f} ({tokens_used} tokens)')
         
         # save the brief summary to a file
-        summary_file = os.path.join(dir_name, 'processed/gpt3', f"{file_id}_{self.model_engine}_summary.txt")
-        with open(f"downloads/gpt3/{file_id}_{self.model_engine}_summary.txt", "w") as f:
+        summary_file = os.path.join(processed_dir, 'gpt3', f"{file_id}_{self.model_engine}_summary.txt")
+        with open(summary_file, "w") as f:
             f.write(summary)
             print(f'↪ Brief {max_sentences} sentence summary saved to {summary_file}')
         

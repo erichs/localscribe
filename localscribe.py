@@ -69,7 +69,7 @@ def transcribe_and_summarize(audio_path, max_sentences=10):
     
    
     summarizer = GPT3Summarizer(OPENAI_API_KEY, model_engine="gpt-3.5-turbo")
-    summarizer.summarize(audio_path, transcript, max_sentences)
+    summarizer.summarize(audio_path, transcript, max_sentences, PROCESSED_DIR)
     
     print(f'Completed summarization for ({audio_path})')
 

@@ -9,7 +9,7 @@ class WhisperTranscriber:
         openai.api_key = api_key
         self.openai_price = float(os.getenv("OPENAI_PRICING_WHISPER"))
         
-    def chunk(self, audio_path):
+    def chunk(self, audio_path, processed_dir):
         file_name = os.path.basename(audio_path)
         file_size = os.path.getsize(audio_path)
         audio_list = []
@@ -24,10 +24,11 @@ class WhisperTranscriber:
             print(f'↪ The audio file is too large: {(file_size / 1024 / 1024):.2f} MB (>25MB), chunking...')
             
             # check if chunks already exist
-            if os.path.exists(f"downloads/whisper/{file_name.split('.')[0]}_0.mp3"):
+            processed_mp3_file = os.path.join(processed_dir, 'whisper', file_name.split('.')[0] + '_0.mp3')
+            if os.path.exists(processed_mp3_file):
                 print('↪ Chunks already exist, loading...')
                 for i in range(100):
-                    chunk_name = f"downloads/whisper/{file_name.split('.')[0]}_{i}.mp3"
+                    chunk_name = f"{processed_dir}/whisper/{file_name.split('.')[0]}_{i}.mp3"
                     if os.path.exists(chunk_name):
                         audio_list.append(chunk_name)
                     else:
@@ -41,7 +42,7 @@ class WhisperTranscriber:
             
             # split the audio file into ~25 minute chunks
             for i, chunk in enumerate(audio[::chunk]):
-                chunk_name = f"downloads/whisper/{file_name.split('.')[0]}_{i}.mp3"
+                chunk_name = f"{processed_dir}/whisper/{file_name.split('.')[0]}_{i}.mp3"
 
                 if os.path.exists(chunk_name):
                     pass
@@ -58,7 +59,7 @@ class WhisperTranscriber:
         
         print(f'🗣️  Initializing Whisper transcriber...')
         
-        audio_list = self.chunk(audio_path)
+        audio_list = self.chunk(audio_path, processed_dir)
         print(f'↪ Chunk size: {len(audio_list)}')
         
         transcriptions = []
@@ -78,6 +79,7 @@ class WhisperTranscriber:
 
             # Extract the transcript from the API response
             transcript = response["text"].strip()
+            transcriptions.append(transcript)
                 
         full_transcript = ' '.join(transcriptions)
         print(f'↪ Total words: {len(full_transcript.split())} -- characters: {len(full_transcript)}')
