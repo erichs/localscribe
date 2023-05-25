@@ -75,6 +75,10 @@ class GPT3Summarizer:
                 
     def split_into_chunks(self, transcript):
         chunks = []
+        # ensure the transcript lines end in periods (occasionally whisper will omit them)
+        transcript = transcript.replace("\n", ".\n")
+        transcript = transcript.replace("..", ".")
+
         sentences = transcript.replace("\n", "").split(".") # split the unwrapped transcript into sentences
         buffer = ""
         token_count = 0
