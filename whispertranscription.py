@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import openai
+import textwrap
 from pydub import AudioSegment
 
 class WhisperTranscriber:
@@ -57,6 +58,14 @@ class WhisperTranscriber:
         
     def transcribe(self, audio_path, processed_dir):
         
+        basename = os.path.basename(audio_path)
+        transcript_path = os.path.join(processed_dir, 'whisper', os.path.splitext(basename)[0] + '-transcript.txt')
+        # Check if transcript already exists
+        if os.path.exists(transcript_path):
+            print(f'↪ Transcript already exists, loading...')
+            with open(transcript_path, 'r') as f:
+                return f.read()
+
         print(f'🗣️  Initializing Whisper transcriber...')
         
         audio_list = self.chunk(audio_path, processed_dir)
@@ -82,11 +91,10 @@ class WhisperTranscriber:
             transcriptions.append(transcript)
                 
         full_transcript = ' '.join(transcriptions)
+        full_wrapped_transcript = '\n'.join(textwrap.wrap(full_transcript, 80))
         print(f'↪ Total words: {len(full_transcript.split())} -- characters: {len(full_transcript)}')
-        basename = os.path.basename(audio_path)
-        transcript_path = os.path.join(processed_dir, 'whisper', os.path.splitext(basename)[0] + '-transcript.txt')
         with open(transcript_path, 'w') as f:
-            f.write(transcript)
+            f.write(full_wrapped_transcript)
             print(f'↪ Full transcript saved to {transcript_path}')
             
-        return full_transcript
+        return full_wrapped_transcript
