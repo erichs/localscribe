@@ -64,7 +64,9 @@ def transcribe_and_summarize(audio_path, max_sentences=10):
     file_id = os.path.basename(audio_path)
     dir_name = os.path.dirname(audio_path)
     
-    transcriber = WhisperTranscriber(OPENAI_API_KEY)
+    useWhisperCpp = os.environ.get("USE_WHISPER_CPP", False)
+
+    transcriber = WhisperTranscriber(useWhisperCpp)
     transcript = transcriber.transcribe(audio_path, PROCESSED_DIR)
     
     summarizer = GPT3Summarizer(OPENAI_API_KEY, model_engine="gpt-3.5-turbo")

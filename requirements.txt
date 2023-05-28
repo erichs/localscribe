@@ -5,3 +5,5 @@ spotipy
 openai
 tiktoken
 youtube_dl
+whispercpp
+numpy
