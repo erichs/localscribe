@@ -46,7 +46,7 @@ func main() {
 	// Listen for signals (Ctrl-C, SIGTERM).
 	go handleSignals(cancel)
 
-	fmt.Printf("Starting watcher on file: %s\n", cfg.LogFile)
+	fmt.Printf("Heralding file: %s\n", cfg.LogFile)
 	fmt.Println("Press Ctrl-C to exit...")
 
 	if err := watchLoop(ctx, cfg); err != nil {
