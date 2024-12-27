@@ -31,7 +31,7 @@ type AssemblyAIBackend struct {
 // NewAssemblyAIBackend returns an AssemblyAIBackend that implements
 // our TranscriptionBackend interface. We pass in an API key, plus callbacks
 // for handling transcripts/errors.
-func NewAssemblyAIBackend(apiKey string, sampleRate int) *AssemblyAIBackend {
+func NewAssemblyAIBackend(cfg Config) *AssemblyAIBackend {
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
 		fmt.Println("Error getting terminal size:", err)
@@ -48,6 +48,7 @@ func NewAssemblyAIBackend(apiKey string, sampleRate int) *AssemblyAIBackend {
 		OnFinalTranscript: func(t assemblyai.FinalTranscript) {
 			// Print final transcripts
 			fmt.Println(t.Text)
+			atomicAppendToFile(cfg.LogFile, t.Text)
 		},
 		OnPartialTranscript: func(t assemblyai.PartialTranscript) {
 			maxWidth := width - 2
@@ -69,9 +70,9 @@ func NewAssemblyAIBackend(apiKey string, sampleRate int) *AssemblyAIBackend {
 	}
 
 	client := assemblyai.NewRealTimeClientWithOptions(
-		assemblyai.WithRealTimeAPIKey(apiKey),
+		assemblyai.WithRealTimeAPIKey(cfg.OpenAIAPIKey),
 		assemblyai.WithRealTimeTranscriber(transcriber),
-		assemblyai.WithRealTimeSampleRate(sampleRate),
+		assemblyai.WithRealTimeSampleRate(cfg.SampleRate),
 	)
 
 	return &AssemblyAIBackend{
