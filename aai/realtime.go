@@ -5,6 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"time"
+
+	"golang.org/x/term"
 
 	"github.com/AssemblyAI/assemblyai-go-sdk"
 )
@@ -28,6 +32,12 @@ type AssemblyAIBackend struct {
 // our TranscriptionBackend interface. We pass in an API key, plus callbacks
 // for handling transcripts/errors.
 func NewAssemblyAIBackend(apiKey string, sampleRate int) *AssemblyAIBackend {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		fmt.Println("Error getting terminal size:", err)
+		return nil
+	}
+
 	transcriber := &assemblyai.RealTimeTranscriber{
 		OnSessionBegins: func(e assemblyai.SessionBegins) {
 			fmt.Println("session begins")
@@ -40,8 +50,18 @@ func NewAssemblyAIBackend(apiKey string, sampleRate int) *AssemblyAIBackend {
 			fmt.Println(t.Text)
 		},
 		OnPartialTranscript: func(t assemblyai.PartialTranscript) {
-			// Overwrite partial transcript on same line
-			fmt.Printf("\r%s", t.Text)
+			maxWidth := width - 2
+			var displayText string
+
+			if len(t.Text) > maxWidth {
+				// Truncate text to fit the terminal width
+				displayText = t.Text[len(t.Text)-maxWidth:]
+			} else {
+				displayText = t.Text
+			}
+
+			// Overwrite the same line with the truncated text
+			fmt.Printf("\r%-*s\r", maxWidth, displayText)
 		},
 		OnError: func(err error) {
 			log.Printf("AssemblyAI error: %v\n", err)
@@ -103,6 +123,12 @@ func StartTranscriptionLoop(
 			audioData, err := rec.Read()
 			if err != nil {
 				return fmt.Errorf("read from recorder failed: %w", err)
+			}
+
+			// If paused, skip sending
+			if paused {
+				time.Sleep(50 * time.Millisecond)
+				continue
 			}
 
 			// Send partial samples to the transcription backend
