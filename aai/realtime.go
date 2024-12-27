@@ -2,103 +2,113 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
+	"log"
 
 	"github.com/AssemblyAI/assemblyai-go-sdk"
-	"github.com/gordonklaus/portaudio"
 )
 
-func main() {
-	sigs := make(chan os.Signal, 1)
+// TranscriptionBackend is an interface for sending audio data to a real-time
+// transcription service and handling connect/disconnect.
+type TranscriptionBackend interface {
+	Connect(ctx context.Context) error
+	Disconnect(ctx context.Context, wait bool) error
+	Send(ctx context.Context, data []byte) error
+}
 
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+// AssemblyAIBackend is a concrete backend implementing TranscriptionBackend
+// using the AssemblyAI Go SDK.
+type AssemblyAIBackend struct {
+	client      *assemblyai.RealtimeClient
+	transcriber *assemblyai.RealTimeTranscriber
+}
 
-	// We need portaudio to record the microphone.
-	err := portaudio.Initialize()
-	checkErr(err)
-	defer portaudio.Terminate()
-
-	var (
-		// Number of samples per seconds.
-		sampleRate = 16_000
-
-		// Number of samples to send at once.
-		framesPerBuffer = 3_200
-	)
-
+// NewAssemblyAIBackend returns an AssemblyAIBackend that implements
+// our TranscriptionBackend interface. We pass in an API key, plus callbacks
+// for handling transcripts/errors.
+func NewAssemblyAIBackend(apiKey string, sampleRate int) *AssemblyAIBackend {
 	transcriber := &assemblyai.RealTimeTranscriber{
-		OnSessionBegins: func(event assemblyai.SessionBegins) {
-			slog.Info("session begins")
+		OnSessionBegins: func(e assemblyai.SessionBegins) {
+			fmt.Println("session begins")
 		},
-		OnSessionTerminated: func(event assemblyai.SessionTerminated) {
-			slog.Info("session terminated")
+		OnSessionTerminated: func(e assemblyai.SessionTerminated) {
+			fmt.Println("session terminated")
 		},
-		OnFinalTranscript: func(transcript assemblyai.FinalTranscript) {
-			fmt.Println(transcript.Text)
+		OnFinalTranscript: func(t assemblyai.FinalTranscript) {
+			// Print final transcripts
+			fmt.Println(t.Text)
 		},
-		OnPartialTranscript: func(transcript assemblyai.PartialTranscript) {
-			fmt.Printf("%s\r", transcript.Text)
+		OnPartialTranscript: func(t assemblyai.PartialTranscript) {
+			// Overwrite partial transcript on same line
+			fmt.Printf("\r%s", t.Text)
 		},
 		OnError: func(err error) {
-			slog.Error("Something bad happened", "err", err)
+			log.Printf("AssemblyAI error: %v\n", err)
 		},
 	}
-
-	apiKey := os.Getenv("ASSEMBLYAI_API_KEY")
 
 	client := assemblyai.NewRealTimeClientWithOptions(
 		assemblyai.WithRealTimeAPIKey(apiKey),
-		assemblyai.WithRealTimeSampleRate(int(sampleRate)),
 		assemblyai.WithRealTimeTranscriber(transcriber),
+		assemblyai.WithSampleRate(sampleRate),
 	)
 
-	ctx := context.Background()
-
-	err = client.Connect(ctx)
-	checkErr(err)
-
-	slog.Info("connected to real-time API", "sample_rate", sampleRate, "frames_per_buffer", framesPerBuffer)
-
-	rec, err := newRecorder(sampleRate, framesPerBuffer)
-	checkErr(err)
-
-	err = rec.Start()
-	checkErr(err)
-
-	slog.Info("recording...")
-
-	for {
-		select {
-		case <-sigs:
-			slog.Info("stopping recording...")
-
-			var err error
-
-			err = rec.Stop()
-			checkErr(err)
-
-			err = client.Disconnect(ctx, true)
-			checkErr(err)
-
-			os.Exit(0)
-		default:
-			b, err := rec.Read()
-			checkErr(err)
-
-			// Send partial audio samples.
-			err = client.Send(ctx, b)
-			checkErr(err)
-		}
+	return &AssemblyAIBackend{
+		client:      client,
+		transcriber: transcriber,
 	}
 }
 
-func checkErr(err error) {
-	if err != nil {
-		slog.Error("Something bad happened", "err", err)
-		os.Exit(1)
+// Connect opens the WebSocket connection to AssemblyAI's real-time API.
+func (a *AssemblyAIBackend) Connect(ctx context.Context) error {
+	return a.client.Connect(ctx)
+}
+
+// Disconnect ends the WebSocket connection, optionally waiting for final transcripts.
+func (a *AssemblyAIBackend) Disconnect(ctx context.Context, wait bool) error {
+	return a.client.Disconnect(ctx, wait)
+}
+
+// Send streams audio data to the real-time API.
+func (a *AssemblyAIBackend) Send(ctx context.Context, data []byte) error {
+	return a.client.Send(ctx, data)
+}
+
+// StartTranscriptionLoop handles the main microphone read/send loop.
+// It assumes the backend is connected and we have a valid recorder.
+func StartTranscriptionLoop(
+	ctx context.Context,
+	backend TranscriptionBackend,
+	rec *recorder, // from recorder.go logic
+) error {
+	if rec == nil {
+		return errors.New("no recorder provided")
+	}
+	defer rec.Close()
+
+	// Start capturing audio from the microphone
+	if err := rec.Start(); err != nil {
+		return fmt.Errorf("recorder start failed: %w", err)
+	}
+	defer rec.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// context canceled (e.g., user hit Ctrl-C)
+			return nil
+		default:
+			// Read audio samples from the microphone
+			audioData, err := rec.Read()
+			if err != nil {
+				return fmt.Errorf("read from recorder failed: %w", err)
+			}
+
+			// Send partial samples to the transcription backend
+			if err := backend.Send(ctx, audioData); err != nil {
+				return fmt.Errorf("send to backend failed: %w", err)
+			}
+		}
 	}
 }
