@@ -20,7 +20,7 @@ type TranscriptionBackend interface {
 // AssemblyAIBackend is a concrete backend implementing TranscriptionBackend
 // using the AssemblyAI Go SDK.
 type AssemblyAIBackend struct {
-	client      *assemblyai.RealtimeClient
+	client      *assemblyai.RealTimeClient
 	transcriber *assemblyai.RealTimeTranscriber
 }
 
@@ -51,7 +51,7 @@ func NewAssemblyAIBackend(apiKey string, sampleRate int) *AssemblyAIBackend {
 	client := assemblyai.NewRealTimeClientWithOptions(
 		assemblyai.WithRealTimeAPIKey(apiKey),
 		assemblyai.WithRealTimeTranscriber(transcriber),
-		assemblyai.WithSampleRate(sampleRate),
+		assemblyai.WithRealTimeSampleRate(sampleRate),
 	)
 
 	return &AssemblyAIBackend{
