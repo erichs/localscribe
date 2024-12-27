@@ -118,8 +118,8 @@ func main() {
 	}()
 
 	// heartbeat appends a timestamp line to the log file every minute, until ctx is done.
-	go func(ctx context.Context, logFile string) {
-		ticker := time.NewTicker(10 * time.Minute)
+	go func(ctx context.Context, cfg Config) {
+		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 
 		for {
@@ -127,15 +127,11 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-				if err == nil {
-					timestamp := "%%% heartbeat " + time.Now().String()
-					_, _ = f.WriteString(timestamp + "\n")
-					f.Close()
-				}
+				timestamp := "%%% heartbeat " + time.Now().String() + "\n"
+				atomicAppendToFile(cfg.LogFile, timestamp)
 			}
 		}
-	}(ctx, "./heartbeat.txt")
+	}(ctx, cfg)
 
 	fmt.Println("Connecting to transcription backend...")
 	if err := backend.Connect(ctx); err != nil {

@@ -19,6 +19,7 @@ type TranscriptionBackend interface {
 	Connect(ctx context.Context) error
 	Disconnect(ctx context.Context, wait bool) error
 	Send(ctx context.Context, data []byte) error
+	KeepAlive(ctx context.Context) error
 }
 
 // AssemblyAIBackend is a concrete backend implementing TranscriptionBackend
@@ -96,6 +97,10 @@ func (a *AssemblyAIBackend) Send(ctx context.Context, data []byte) error {
 	return a.client.Send(ctx, data)
 }
 
+func (a *AssemblyAIBackend) KeepAlive(ctx context.Context) error {
+	return a.client.ForceEndUtterance(ctx)
+}
+
 // StartTranscriptionLoop handles the main microphone read/send loop.
 // It assumes the backend is connected and we have a valid recorder.
 func StartTranscriptionLoop(
@@ -128,6 +133,7 @@ func StartTranscriptionLoop(
 
 			// If paused, skip sending
 			if paused {
+				backend.KeepAlive(ctx)
 				time.Sleep(50 * time.Millisecond)
 				continue
 			}
