@@ -23,6 +23,10 @@
 
 ---
 
+## Dependencies
+
+To use `localscribe` with a microphone, you will need to install `portaudio`: `brew install portaudio`.
+
 ## Syntax Conventions
 
 ### 1. Metadata Lines

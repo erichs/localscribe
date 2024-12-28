@@ -78,26 +78,22 @@ func main() {
 		log.Fatalf("failed to create recorder: %v\n", err)
 	}
 
-	// Our chosen backend
 	backend := NewAssemblyAIBackend(cfg)
 
-	// Set up the context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	fmt.Printf("Transcribing to file: %s\n", cfg.LogFile)
 
-	// Set up signal handling for both SIGINT (Ctrl-C) and SIGTSTP (Ctrl-Z)
 	go func() {
 		sigCh := make(chan os.Signal, 1)
-		// Listen for Ctrl-C (SIGINT) and Ctrl-Z (SIGTSTP), plus SIGTERM if you want
+		// Listen for Ctrl-C (SIGINT) and Ctrl-Z (SIGTSTP), plus SIGTERM
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGTSTP)
 		for {
 			s := <-sigCh
 			switch s {
 			case os.Interrupt, syscall.SIGTERM:
-				// The user wants to exit. Pause sending so we don't get session-closed errors.
+				// Pause sending so we don't get session-closed errors.
 				paused = true
 				fmt.Println("\nlocalscribe: caught shutdown signal...")
-				// Disconnect from backend
 				if err := backend.Disconnect(ctx, true); err != nil {
 					log.Printf("warning: backend disconnect error: %v\n", err)
 				}
@@ -132,6 +128,8 @@ func main() {
 			}
 		}
 	}(ctx, cfg)
+
+	go pollZoomStatus(ctx, cfg)
 
 	fmt.Println("Connecting to transcription backend...")
 	if err := backend.Connect(ctx); err != nil {
