@@ -19,6 +19,7 @@ type Config struct {
 	OpenAIAPIKey    string
 	SampleRate      int
 	FramesPerBuffer int
+	Context         context.Context
 }
 
 var (
@@ -26,13 +27,14 @@ var (
 	defaultLogFile   = "transcription-" + defaultNowString + ".log"
 )
 
-func parseFlags() Config {
+func initConfig(ctx context.Context) Config {
 	logFileEnv := os.Getenv("TRANSCRIPTION_FILE")
 	openAIKeyEnv := os.Getenv("OPENAI_API_KEY")
 
 	cfg := Config{
 		LogFile:      defaultLogFile,
 		OpenAIAPIKey: openAIKeyEnv,
+		Context:      ctx,
 	}
 
 	flag.IntVar(&cfg.SampleRate, "sampleRate", 16000, "Audio sample rate (Hz)")
@@ -45,6 +47,11 @@ func parseFlags() Config {
 
 	flag.Parse()
 
+	if cfg.OpenAIAPIKey == "" {
+		fmt.Fprintln(os.Stderr, "Error: Must provide -k <APIKEY> or set OPENAI_API_KEY env var")
+		os.Exit(1)
+	}
+
 	return cfg
 }
 
@@ -56,19 +63,18 @@ func strWithFallback(str, fallback string) string {
 	return fallback
 }
 
-func main() {
-
-	cfg := parseFlags()
-
-	if cfg.OpenAIAPIKey == "" {
-		fmt.Fprintln(os.Stderr, "Error: Must provide -k <APIKEY> or set OPENAI_API_KEY env var")
-		os.Exit(1)
-	}
-
+func initPortAudio() {
 	fmt.Println("localscribe: initializing PortAudio...")
 	if err := portaudio.Initialize(); err != nil {
 		log.Fatalf("portaudio init failed: %v\n", err)
 	}
+}
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	cfg := initConfig(ctx)
+
+	initPortAudio()
 	defer portaudio.Terminate()
 
 	fmt.Printf("Creating new recorder: sampleRate=%d, framesPerBuffer=%d\n",
@@ -80,7 +86,6 @@ func main() {
 
 	backend := NewAssemblyAIBackend(cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
 	fmt.Printf("Transcribing to file: %s\n", cfg.LogFile)
 
 	go func() {
@@ -114,9 +119,9 @@ func main() {
 	}()
 
 	// heartbeat appends a timestamp line to the log file every minute, until ctx is done.
-	go heartbeat(ctx, cfg)
+	go heartbeat(cfg)
 
-	go pollZoomStatus(ctx, cfg)
+	go pollZoomStatus(cfg)
 
 	fmt.Println("Connecting to transcription backend...")
 	if err := backend.Connect(ctx); err != nil {

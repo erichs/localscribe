@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -21,13 +20,13 @@ const (
 // Previous state
 var previousState ZoomState = Unknown
 
-func pollZoomStatus(ctx context.Context, cfg Config) {
+func pollZoomStatus(cfg Config) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-cfg.Context.Done():
 			return // clean-up/terminate
 		case <-ticker.C:
 			// Get the current Zoom state
