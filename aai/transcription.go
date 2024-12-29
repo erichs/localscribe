@@ -35,16 +35,16 @@ type AssemblyAIBackend struct {
 func NewAssemblyAIBackend(cfg Config) *AssemblyAIBackend {
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
-		fmt.Println("Error getting terminal size:", err)
+		log.Println("Error getting terminal size:", err)
 		return nil
 	}
 
 	transcriber := &assemblyai.RealTimeTranscriber{
 		OnSessionBegins: func(e assemblyai.SessionBegins) {
-			fmt.Println("session begins")
+			log.Println("transcription session start")
 		},
 		OnSessionTerminated: func(e assemblyai.SessionTerminated) {
-			fmt.Println("session terminated")
+			log.Println("transcription session end")
 		},
 		OnFinalTranscript: func(t assemblyai.FinalTranscript) {
 			// Print final transcripts
@@ -106,22 +106,22 @@ func (a *AssemblyAIBackend) KeepAlive(ctx context.Context) error {
 func StartTranscriptionLoop(
 	ctx context.Context,
 	backend TranscriptionBackend,
-	rec *recorder, // from recorder.go logic
+	rec *recorder, // from microphone.go logic
 ) error {
 	if rec == nil {
 		return errors.New("no recorder provided")
 	}
-	defer rec.Close()
 
 	// Start capturing audio from the microphone
 	if err := rec.Start(); err != nil {
 		return fmt.Errorf("recorder start failed: %w", err)
 	}
-	defer rec.Stop()
+	defer cleanupRecorder(rec)
 
 	for {
 		select {
 		case <-ctx.Done():
+			log.Println("transcription loop ended")
 			// context canceled (e.g., user hit Ctrl-C)
 			return nil
 		default:

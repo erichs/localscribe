@@ -20,6 +20,7 @@ type Config struct {
 	SampleRate      int
 	FramesPerBuffer int
 	Context         context.Context
+	RESTPort        int
 }
 
 var (
@@ -37,6 +38,7 @@ func initConfig(ctx context.Context) Config {
 		Context:      ctx,
 	}
 
+	flag.IntVar(&cfg.RESTPort, "restPort", 8080, "Port to listen on for REST queries")
 	flag.IntVar(&cfg.SampleRate, "sampleRate", 16000, "Audio sample rate (Hz)")
 	flag.IntVar(&cfg.FramesPerBuffer, "framesPerBuffer", 3200,
 		"Number of frames to process per buffer")
@@ -64,7 +66,7 @@ func strWithFallback(str, fallback string) string {
 }
 
 func initPortAudio() {
-	fmt.Println("localscribe: initializing PortAudio...")
+	log.Println("initializing PortAudio")
 	if err := portaudio.Initialize(); err != nil {
 		log.Fatalf("portaudio init failed: %v\n", err)
 	}
@@ -77,7 +79,7 @@ func main() {
 	initPortAudio()
 	defer portaudio.Terminate()
 
-	fmt.Printf("Creating new recorder: sampleRate=%d, framesPerBuffer=%d\n",
+	log.Printf("starting voice recorder: sampleRate=%d, framesPerBuffer=%d\n",
 		cfg.SampleRate, cfg.FramesPerBuffer)
 	rec, err := newRecorder(cfg.SampleRate, cfg.FramesPerBuffer)
 	if err != nil {
@@ -86,7 +88,7 @@ func main() {
 
 	backend := NewAssemblyAIBackend(cfg)
 
-	fmt.Printf("Transcribing to file: %s\n", cfg.LogFile)
+	log.Printf("transcribing to file: %s\n", cfg.LogFile)
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)
@@ -98,7 +100,7 @@ func main() {
 			case os.Interrupt, syscall.SIGTERM:
 				// Pause sending so we don't get session-closed errors.
 				paused = true
-				fmt.Println("\nlocalscribe: caught shutdown signal...")
+				log.Println("localscribe: shutdown received...")
 				if err := backend.Disconnect(ctx, true); err != nil {
 					log.Printf("warning: backend disconnect error: %v\n", err)
 				}
@@ -123,18 +125,26 @@ func main() {
 
 	go pollZoomStatus(cfg)
 
-	fmt.Println("Connecting to transcription backend...")
+	go launchRESTServer(cfg)
+
+	log.Println("connecting to transcription backend")
 	if err := backend.Connect(ctx); err != nil {
 		log.Fatalf("connect to backend failed: %v\n", err)
 	}
 
-	fmt.Println("Beginning transcription loop. Press Ctrl+Z to pause/resume, Ctrl+C to quit.")
+	log.Println("transcription loop started! Press Ctrl+Z to pause/resume, Ctrl+C to quit.")
 
 	if err := StartTranscriptionLoop(ctx, backend, rec); err != nil {
 		log.Printf("transcription loop ended: %v\n", err)
 	}
 
-	fmt.Println("localscribe: exiting gracefully.")
+	log.Println("localscribe exit: OK")
+}
+
+func launchRESTServer(cfg Config) {
+	if err := startRESTServer(cfg); err != nil {
+		log.Printf("web server exited with error: %v\n", err)
+	}
 }
 
 // atomicAppendToFile appends text to a file, creating it if necessary.

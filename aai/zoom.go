@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 	"time"
@@ -23,10 +24,12 @@ var previousState ZoomState = Unknown
 func pollZoomStatus(cfg Config) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+	log.Println("zoom status polling start")
 
 	for {
 		select {
 		case <-cfg.Context.Done():
+			log.Println("zoom status polling end")
 			return // clean-up/terminate
 		case <-ticker.C:
 			// Get the current Zoom state

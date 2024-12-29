@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
 
 	"github.com/gordonklaus/portaudio"
 )
@@ -50,4 +51,10 @@ func (r *recorder) Stop() error {
 
 func (r *recorder) Close() error {
 	return r.stream.Close()
+}
+
+func cleanupRecorder(rec *recorder) {
+	log.Println("stopping voice recorder")
+	rec.Stop()
+	rec.Close()
 }
