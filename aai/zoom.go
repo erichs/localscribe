@@ -101,6 +101,11 @@ func handleStateTransition(previous, current ZoomState, cfg Config) {
 		meetingUrl, _ := getMeetingURL()
 		line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting started", meetingUrl)
 		atomicAppendToFile(cfg.LogFile, line)
+		meetingTitle, _ := getMeetingTitle()
+		if meetingTitle != "" {
+			line = fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting title", meetingTitle)
+			atomicAppendToFile(cfg.LogFile, line)
+		}
 	}
 }
 
@@ -132,4 +137,41 @@ end if
 	}
 
 	return out.String(), nil
+}
+
+func getMeetingTitle() (string, error) {
+	cmd := exec.Command("osascript", "-e", `display dialog "Purpose/Title of this meeting?" default answer "" with icon alias "Macintosh HD:Applications:zoom.us.app:Contents:Resources:ZPLogo.icns" buttons {"Cancel", "Continue"} default button "Continue"`)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println("Error executing osascript:", err)
+		return "", err
+	}
+	output := out.String()
+
+	// Parse the output to extract button returned and text returned
+	// e.g. button returned:Continue, text returned:daily standup
+	lines := strings.Split(output, ", ")
+	var buttonReturned, textReturned string
+	for _, line := range lines {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			switch key {
+			case "button returned":
+				buttonReturned = value
+			case "text returned":
+				textReturned = value
+			}
+		}
+	}
+
+	if buttonReturned != "Continue" {
+		return "", nil
+	}
+	return textReturned, nil
 }
