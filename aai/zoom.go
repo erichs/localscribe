@@ -90,12 +90,17 @@ var meetingStartTime = time.Now()
 func handleStateTransition(previous, current ZoomState, cfg Config) {
 	switch current {
 	case ActiveNoMeeting:
-		meetingDuration := time.Now().Sub(meetingStartTime)
-		atomicAppendToFile(cfg.LogFile, fmt.Sprintf("%%%%%% meeting ended: %s\n", meetingDuration))
+		if previous == Unknown {
+			return // ignore initial transition on startup
+		}
+		meetingDuration := time.Since(meetingStartTime)
+		line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting ended", meetingDuration)
+		atomicAppendToFile(cfg.LogFile, line)
 	case ActiveInMeeting:
 		meetingStartTime = time.Now()
 		meetingUrl, _ := getMeetingURL()
-		atomicAppendToFile(cfg.LogFile, fmt.Sprintf("%%%%%% meeting started: %s\n", meetingUrl))
+		line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting started", meetingUrl)
+		atomicAppendToFile(cfg.LogFile, line)
 	}
 }
 

@@ -16,7 +16,7 @@ import (
 var paused bool // Global or shared var to track pause state
 type Config struct {
 	LogFile         string
-	OpenAIAPIKey    string
+	AssemblyAIKey   string
 	SampleRate      int
 	FramesPerBuffer int
 	Context         context.Context
@@ -30,12 +30,12 @@ var (
 
 func initConfig(ctx context.Context) Config {
 	logFileEnv := os.Getenv("TRANSCRIPTION_FILE")
-	openAIKeyEnv := os.Getenv("OPENAI_API_KEY")
+	assemblyAIKey := os.Getenv("ASSEMBLYAI_API_KEY")
 
 	cfg := Config{
-		LogFile:      defaultLogFile,
-		OpenAIAPIKey: openAIKeyEnv,
-		Context:      ctx,
+		LogFile:       defaultLogFile,
+		AssemblyAIKey: assemblyAIKey,
+		Context:       ctx,
 	}
 
 	flag.IntVar(&cfg.RESTPort, "restPort", 8080, "Port to listen on for REST queries")
@@ -44,12 +44,12 @@ func initConfig(ctx context.Context) Config {
 		"Number of frames to process per buffer")
 	flag.StringVar(&cfg.LogFile, "l", strWithFallback(logFileEnv, cfg.LogFile),
 		"Path to the transcription log file (default: TRANSCRIPTION_FILE or time-based).")
-	flag.StringVar(&cfg.OpenAIAPIKey, "k", cfg.OpenAIAPIKey,
+	flag.StringVar(&cfg.AssemblyAIKey, "k", cfg.AssemblyAIKey,
 		"OpenAI API key (default: OPENAI_API_KEY).")
 
 	flag.Parse()
 
-	if cfg.OpenAIAPIKey == "" {
+	if cfg.AssemblyAIKey == "" {
 		fmt.Fprintln(os.Stderr, "Error: Must provide -k <APIKEY> or set OPENAI_API_KEY env var")
 		os.Exit(1)
 	}
@@ -100,7 +100,7 @@ func main() {
 			case os.Interrupt, syscall.SIGTERM:
 				// Pause sending so we don't get session-closed errors.
 				paused = true
-				log.Println("localscribe: shutdown received...")
+				log.Println("\r\nlocalscribe: shutdown received...")
 				if err := backend.Disconnect(ctx, true); err != nil {
 					log.Printf("warning: backend disconnect error: %v\n", err)
 				}
@@ -132,10 +132,10 @@ func main() {
 		log.Fatalf("connect to backend failed: %v\n", err)
 	}
 
-	log.Println("transcription loop started! Press Ctrl+Z to pause/resume, Ctrl+C to quit.")
+	log.Println("Press Ctrl+Z to pause/resume, Ctrl+C to quit.")
 
 	if err := StartTranscriptionLoop(ctx, backend, rec); err != nil {
-		log.Printf("transcription loop ended: %v\n", err)
+		log.Fatalf("transcription loop error: %v\n", err)
 	}
 
 	log.Println("localscribe exit: OK")
@@ -149,16 +149,16 @@ func launchRESTServer(cfg Config) {
 
 // atomicAppendToFile appends text to a file, creating it if necessary.
 // it uses a simple semaphore locking mechanism to limit concurrency (block)
-var sem = make(chan int, 1)
+var lockSem = make(chan int, 1)
 
 func atomicAppendToFile(path, text string) error {
-	sem <- 1 // acquire lock
+	lockSem <- 1 // acquire lock
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	_, err = f.WriteString(text + "\n")
-	<-sem // release lock
+	<-lockSem // release lock
 	return err
 }

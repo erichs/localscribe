@@ -71,7 +71,7 @@ func NewAssemblyAIBackend(cfg Config) *AssemblyAIBackend {
 	}
 
 	client := assemblyai.NewRealTimeClientWithOptions(
-		assemblyai.WithRealTimeAPIKey(cfg.OpenAIAPIKey),
+		assemblyai.WithRealTimeAPIKey(cfg.AssemblyAIKey),
 		assemblyai.WithRealTimeTranscriber(transcriber),
 		assemblyai.WithRealTimeSampleRate(cfg.SampleRate),
 	)
@@ -121,7 +121,6 @@ func StartTranscriptionLoop(
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("transcription loop ended")
 			// context canceled (e.g., user hit Ctrl-C)
 			return nil
 		default:
