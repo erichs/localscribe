@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"log"
@@ -21,47 +22,58 @@ const (
 // Previous state
 var previousState ZoomState = Unknown
 
+// pollZoomStatus monitors `lsof` output for state transitions.
 func pollZoomStatus(cfg Config) {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	log.Println("zoom status polling start")
+	log.Println("Zoom status polling start")
+	defer log.Println("Zoom status polling end")
 
-	for {
-		select {
-		case <-cfg.Context.Done():
-			log.Println("zoom status polling end")
-			return // clean-up/terminate
-		case <-ticker.C:
-			// Get the current Zoom state
-			currentState := getZoomState()
+	// Set up the lsof command in repeat mode
+	cmd := exec.CommandContext(cfg.Context, "lsof", "-i", "4UDP", "-r", "5")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatalf("Error creating stdout pipe for lsof: %v", err)
+	}
 
-			// Check for state transitions
-			if currentState != previousState {
-				handleStateTransition(previousState, currentState, cfg)
-				previousState = currentState
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		log.Fatalf("Error starting lsof: %v", err)
+	}
+
+	// Goroutine to handle lsof output
+	go func() {
+		defer cmd.Wait()
+		scanner := bufio.NewScanner(stdout)
+		var zoomLines []string
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "=======" {
+				// Process batch of output when delimiter is encountered
+				currentState := determineZoomState(zoomLines)
+				if currentState != previousState {
+					handleStateTransition(previousState, currentState, cfg)
+					previousState = currentState
+				}
+				zoomLines = nil // Reset for next batch
+			} else {
+				zoomLines = append(zoomLines, line)
 			}
 		}
-	}
+
+		if err := scanner.Err(); err != nil {
+			log.Printf("Error reading lsof output: %v", err)
+		}
+	}()
+
+	// Wait for context cancellation to stop lsof
+	<-cfg.Context.Done()
+	log.Println("Context canceled, stopping lsof...")
+	cmd.Process.Kill()
 }
 
-// getZoomState determines the current state of Zoom based on `lsof` output.
-func getZoomState() ZoomState {
-	// Run the `lsof -i 4UDP` command
-	cmd := exec.Command("lsof", "-i", "4UDP")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-
-	err := cmd.Run()
-	if err != nil {
-		fmt.Println("Error running lsof:", err)
-		return Unknown
-	}
-
-	// Filter output for zoom.us
-	lines := strings.Split(out.String(), "\n")
+// determineZoomState determines the current Zoom state based on lsof output.
+func determineZoomState(lines []string) ZoomState {
 	zoomLines := filterLines(lines, "zoom.us")
-
-	// Determine state based on the number of matching lines
 	zoomCount := len(zoomLines)
 	switch {
 	case zoomCount == 1:
