@@ -25,8 +25,8 @@ var previousState ZoomState = Unknown
 
 // pollZoomStatus monitors `lsof` output for state transitions.
 func pollZoomStatus(cfg Config) {
-	log.Println("Zoom status polling start")
-	defer log.Println("Zoom status polling end")
+	log.Println("zoom status polling via lsof, start")
+	defer log.Println("zoom status polling end")
 
 	// Set up the lsof command in repeat mode
 	cmd := exec.CommandContext(cfg.Context, "lsof", "-i", "4UDP", "-r", "5")
@@ -68,7 +68,7 @@ func pollZoomStatus(cfg Config) {
 
 	// Wait for context cancellation to stop lsof
 	<-cfg.Context.Done()
-	log.Println("Context canceled, stopping lsof...")
+	log.Println("stopping lsof monitoring...")
 	cmd.Process.Kill()
 }
 

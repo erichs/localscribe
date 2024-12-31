@@ -129,6 +129,10 @@ func main() {
 
 	scribeIPInfo(cfg)
 
+	if err := startChromeHistoryPolling(cfg); err != nil {
+		log.Printf("Chrome polling init error: %v\n", err)
+	}
+
 	log.Println("connecting to transcription backend")
 	if err := backend.Connect(ctx); err != nil {
 		log.Fatalf("connect to backend failed: %v\n", err)
