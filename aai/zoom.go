@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"math"
 	"os/exec"
 	"strings"
 	"time"
@@ -108,6 +109,11 @@ func handleStateTransition(previous, current ZoomState, cfg Config) {
 		meetingDuration := time.Since(meetingStartTime)
 		line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting ended", meetingDuration)
 		atomicAppendToFile(cfg.LogFile, line)
+		// auto-summarize meeting via inline ### command
+		// TODO: make this configurable
+		n := RoundToNearestMinute(meetingDuration)
+		line = fmt.Sprintf("%s %s %d %s\n", time.Now().Format("2006/01/02 15:04:05"), "### last", n, "| summarize")
+		atomicAppendToFile(cfg.LogFile, line)
 	case ActiveInMeeting:
 		meetingStartTime = time.Now()
 		meetingUrl, _ := getMeetingURL()
@@ -186,4 +192,9 @@ func getMeetingTitle() (string, error) {
 		return "", nil
 	}
 	return textReturned, nil
+}
+
+func RoundToNearestMinute(d time.Duration) int {
+	minutes := d.Minutes()          // Convert duration to float64 minutes
+	return int(math.Round(minutes)) // Round to nearest integer
 }
