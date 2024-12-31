@@ -127,6 +127,8 @@ func main() {
 
 	go launchRESTServer(cfg)
 
+	scribeIPInfo(cfg)
+
 	log.Println("connecting to transcription backend")
 	if err := backend.Connect(ctx); err != nil {
 		log.Fatalf("connect to backend failed: %v\n", err)
@@ -161,4 +163,10 @@ func atomicAppendToFile(path, text string) error {
 	_, err = f.WriteString(text + "\n")
 	<-lockSem // release lock
 	return err
+}
+
+func scribeIPInfo(cfg Config) {
+	info := fetchIPInfo()
+	line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% ipinfo", info)
+	atomicAppendToFile(cfg.LogFile, line)
 }
