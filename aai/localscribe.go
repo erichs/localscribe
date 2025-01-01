@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 	"time"
 
@@ -25,7 +26,7 @@ type Config struct {
 
 var (
 	defaultNowString = time.Now().Format("20060102_1504")
-	defaultLogFile   = "transcription-" + defaultNowString + ".log"
+	defaultLogFile   = path.Join(os.Getenv("HOME"), ".local", "scribe", "transcription-"+defaultNowString+".log")
 )
 
 func initConfig(ctx context.Context) Config {
@@ -171,6 +172,10 @@ func atomicAppendToFile(path, text string) error {
 
 func scribeIPInfo(cfg Config) {
 	info := fetchIPInfo()
-	line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% ipinfo", info)
+	line := fmt.Sprintf("%s %s - %s\n", getDateTime(), "%%% ipinfo", info)
 	atomicAppendToFile(cfg.LogFile, line)
+}
+
+func getDateTime() string {
+	return time.Now().Format("2006/01/02 15:04:05 EST")
 }

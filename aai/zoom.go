@@ -107,21 +107,21 @@ func handleStateTransition(previous, current ZoomState, cfg Config) {
 			return // ignore initial transition on startup
 		}
 		meetingDuration := time.Since(meetingStartTime)
-		line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting ended", meetingDuration)
+		line := fmt.Sprintf("%s %s - %s\n", getDateTime(), "%%% meeting ended", meetingDuration)
 		atomicAppendToFile(cfg.LogFile, line)
 		// auto-summarize meeting via inline ### command
 		// TODO: make this configurable
 		n := RoundToNearestMinute(meetingDuration)
-		line = fmt.Sprintf("%s %s %d %s\n", time.Now().Format("2006/01/02 15:04:05"), "### last", n, "| summarize")
+		line = fmt.Sprintf("%s %s %d %s\n", getDateTime(), "### last", n, "| summarize")
 		atomicAppendToFile(cfg.LogFile, line)
 	case ActiveInMeeting:
 		meetingStartTime = time.Now()
 		meetingUrl, _ := getMeetingURL()
-		line := fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting started", meetingUrl)
+		line := fmt.Sprintf("%s %s - %s\n", getDateTime(), "%%% meeting started", meetingUrl)
 		atomicAppendToFile(cfg.LogFile, line)
 		meetingTitle, _ := getMeetingTitle()
 		if meetingTitle != "" {
-			line = fmt.Sprintf("%s %s - %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% meeting title", meetingTitle)
+			line = fmt.Sprintf("%s %s - %s\n", getDateTime(), "%%% meeting title", meetingTitle)
 			atomicAppendToFile(cfg.LogFile, line)
 		}
 	}

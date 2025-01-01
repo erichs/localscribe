@@ -19,7 +19,7 @@ import (
 // 3) Appends them as metadata lines to cfg.LogFile
 // 4) Cleans up after itself
 func startChromeHistoryPolling(cfg Config) error {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(10 * time.Minute)
 	log.Println("google chrome history polling started.")
 	go func() {
 		defer ticker.Stop()
@@ -89,7 +89,7 @@ ORDER BY visits.visit_time ASC
 		// Build the line for the localscribe log
 		// e.g. %%% chrome url: https://..., title: "Foo", visited: YYYY-MM-DD HH:MM:SS
 
-		line := fmt.Sprintf("%s %s url: %s, title: %q, visited: %s", time.Now().Format("2006/01/02 15:04:05"), "%%% google chrome", chromeURL, title, visitedLocal)
+		line := fmt.Sprintf("%s %s url: %s, title: %q, visited: %s", getDateTime(), "%%% google chrome", chromeURL, title, visitedLocal)
 		if err := atomicAppendToFile(cfg.LogFile, line); err != nil {
 			log.Printf("failed to append line to log: %v", err)
 		}

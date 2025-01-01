@@ -37,7 +37,7 @@ func startRESTServer(cfg Config) error {
 			http.Error(w, "Missing query param 'body'", http.StatusBadRequest)
 			return
 		}
-		line := "### " + body
+		line := fmt.Sprintf("%s ### %s", getDateTime(), body)
 
 		if err := atomicAppendToFile(cfg.LogFile, line); err != nil {
 			log.Printf("Error appending command line: %v\n", err)
@@ -59,7 +59,7 @@ func startRESTServer(cfg Config) error {
 			http.Error(w, "Missing query param 'body'", http.StatusBadRequest)
 			return
 		}
-		line := "%%% " + body
+		line := fmt.Sprintf("%s %%%%%% %s", getDateTime(), body)
 
 		if err := atomicAppendToFile(cfg.LogFile, line); err != nil {
 			log.Printf("Error appending metadata line: %v\n", err)

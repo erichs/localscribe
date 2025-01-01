@@ -49,7 +49,8 @@ func NewAssemblyAIBackend(cfg Config) *AssemblyAIBackend {
 		OnFinalTranscript: func(t assemblyai.FinalTranscript) {
 			// Print final transcripts
 			fmt.Println(t.Text)
-			atomicAppendToFile(cfg.LogFile, t.Text)
+			line := fmt.Sprintf("%s - %s", getDateTime(), t.Text)
+			atomicAppendToFile(cfg.LogFile, line)
 		},
 		OnPartialTranscript: func(t assemblyai.PartialTranscript) {
 			maxWidth := width - 2

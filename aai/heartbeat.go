@@ -15,7 +15,7 @@ func heartbeat(cfg Config) {
 		case <-cfg.Context.Done():
 			return
 		case <-ticker.C:
-			heartbeat := fmt.Sprintf("%s %s\n", time.Now().Format("2006/01/02 15:04:05"), "%%% heartbeat")
+			heartbeat := fmt.Sprintf("%s %s\n", getDateTime(), "%%% heartbeat")
 			atomicAppendToFile(cfg.LogFile, heartbeat)
 		}
 	}
