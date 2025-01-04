@@ -121,18 +121,11 @@ func main() {
 		}
 	}()
 
-	// heartbeat appends a timestamp line to the log file every minute, until ctx is done.
-	go heartbeat(cfg)
-
 	go pollZoomStatus(cfg)
-
 	go launchRESTServer(cfg)
+	go pollChromeHistory(cfg)
 
 	scribeIPInfo(cfg)
-
-	if err := startChromeHistoryPolling(cfg); err != nil {
-		log.Printf("Chrome polling init error: %v\n", err)
-	}
 
 	log.Println("connecting to transcription backend")
 	if err := backend.Connect(ctx); err != nil {

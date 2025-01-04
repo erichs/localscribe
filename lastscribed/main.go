@@ -43,7 +43,7 @@ const (
 const (
 	lineLayout   = "2006/01/02 15:04:05 MST"
 	usageExample = `
-Usage: lastscribed <N> <unit> [--dir path] [--keepmeta] [--asof "YYYY/MM/DD HH:MM:SS MST"]
+Usage: lastscribed [--dir path] [--keepmeta] [--asof "YYYY/MM/DD HH:MM:SS MST"] <N> <unit> 
 
 Examples:
   lastscribed 20 min
@@ -51,7 +51,7 @@ Examples:
   lastscribed 2 days
   lastscribed 1 week
   lastscribed 2 meetings
-  lastscribed 2 hours --asof="2024/12/31 23:45:00 EST"
+  lastscribed --asof="2024/12/31 23:45:00 EST" 2 hours 
 
 Note: Place flags *before* N/unit in Go’s default flag parsing, e.g.:
   lastscribed --asof="2024/12/31 23:45:00 EST" 2 meetings
