@@ -159,7 +159,7 @@ func main() {
 			log.Printf("Warning: Only %d intervals found, asked for %d.\n", len(intervals), n)
 		}
 
-		gatherAndPrintMeetings(linesBeforeAsOf, selected, keepMeta)
+		gatherAndPrintMeetings(linesBeforeAsOf, selected, keepMeta, trimDate)
 	}
 }
 
@@ -384,7 +384,10 @@ func findMeetingIntervals(all []LogLine) []MeetingInterval {
 	return intervals
 }
 
-func gatherAndPrintMeetings(all []LogLine, intervals []MeetingInterval, keepAllMetadata bool) {
+func gatherAndPrintMeetings(all []LogLine, intervals []MeetingInterval, keepAllMetadata bool, trimDate bool) {
+	if trimDate {
+		all = removeDatePrefix(all)
+	}
 	for ivIdx, iv := range intervals {
 		for i := iv.StartIndex; i <= iv.EndIndex; i++ {
 			ln := all[i]
@@ -394,6 +397,7 @@ func gatherAndPrintMeetings(all []LogLine, intervals []MeetingInterval, keepAllM
 					continue
 				}
 			}
+
 			fmt.Println(ln.Raw)
 		}
 		if ivIdx < len(intervals)-1 {
