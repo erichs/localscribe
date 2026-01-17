@@ -1,0 +1,32 @@
+# localdsmc configuration file
+# Copy to ~/.localdsmc.yaml or ~/.config/localdsmc/config.yaml
+
+# WebSocket server URL (default: ws://127.0.0.1:8080)
+server_url: ws://127.0.0.1:8080
+
+# API key for authentication (default: public_token)
+api_key: public_token
+
+# Output directory for transcript files (default: current directory)
+output_dir: .
+
+# Filename template with strftime-like placeholders (default: transcript_%Y%m%d_%H%M%S.txt)
+# Supported: %Y (year), %m (month), %d (day), %H (hour), %M (minute), %S (second)
+filename_template: transcript_%Y%m%d_%H%M%S.txt
+
+# Audio gain multiplier (default: 1.0)
+# Useful for boosting quiet microphones. Range: 0.1 - 10.0
+gain: 1.0
+
+# Audio input device index (default: -1 = default device)
+# Use `localdsmc -list-devices` to see available devices
+device_index: -1
+
+# Pause transcription on VAD end-of-turn detection (default: false)
+vad_pause: false
+
+# Silence threshold in seconds for inserting line breaks (default: 2.0)
+pause_threshold: 2.0
+
+# Enable debug output (default: false)
+debug: false
