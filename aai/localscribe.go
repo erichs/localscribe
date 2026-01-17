@@ -168,7 +168,3 @@ func scribeIPInfo(cfg Config) {
 	line := fmt.Sprintf("%s %s - %s\n", getDateTime(), "%%% ipinfo", info)
 	atomicAppendToFile(cfg.LogFile, line)
 }
-
-func getDateTime() string {
-	return time.Now().Format("2006/01/02 15:04:05 EST")
-}

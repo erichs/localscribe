@@ -43,7 +43,7 @@ const (
 const (
 	lineLayout   = "2006/01/02 15:04:05 MST"
 	usageExample = `
-Usage: lastscribed [--dir path] [--keepmeta] [--asof "YYYY/MM/DD HH:MM:SS MST"] <N> <unit> 
+Usage: lastscribed [--dir path] [--keepmeta] [--asof "YYYY/MM/DD HH:MM:SS MST"] <N> <unit>
 
 Examples:
   lastscribed 20 min
@@ -51,7 +51,7 @@ Examples:
   lastscribed 2 days
   lastscribed 1 week
   lastscribed 2 meetings
-  lastscribed --asof="2024/12/31 23:45:00 EST" 2 hours 
+  lastscribed --asof="2024/12/31 23:45:00 EST" 2 hours
 
 Note: Place flags *before* N/unit in Go’s default flag parsing, e.g.:
   lastscribed --asof="2024/12/31 23:45:00 EST" 2 meetings
@@ -65,22 +65,23 @@ var (
 	trimDate         bool
 	userSpecifiedDir string
 	asOfStr          string
+	asOfUsed         bool // New flag to indicate if --asof was specified
 )
 
-func computeTimeCutoff(n int, unit int, asOf time.Time) time.Time {
+func computeTimeCutoff(n int, unit int, baseTime time.Time) time.Time {
 	switch unit {
 	case UnitMinutes:
-		return asOf.Add(-time.Duration(n) * time.Minute)
+		return baseTime.Add(-time.Duration(n) * time.Minute)
 	case UnitHours:
-		return asOf.Add(-time.Duration(n) * time.Hour)
+		return baseTime.Add(-time.Duration(n) * time.Hour)
 	case UnitDays:
-		return asOf.AddDate(0, 0, -n)
+		return baseTime.AddDate(0, 0, -n)
 	case UnitWeeks:
-		return asOf.AddDate(0, 0, -7*n)
+		return baseTime.AddDate(0, 0, -7*n)
 	case UnitMonths:
-		return asOf.AddDate(0, -n, 0)
+		return baseTime.AddDate(0, -n, 0)
 	default:
-		return asOf // fallback
+		return baseTime // fallback
 	}
 }
 
@@ -94,6 +95,13 @@ func main() {
 	flag.StringVar(&asOfStr, "asof", "",
 		`Use this "YYYY/MM/DD HH:MM:SS MST" instead of time.Now() for filtering.`)
 	flag.Parse()
+
+	// Check if --asof was actually provided on the command line
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "asof" {
+			asOfUsed = true
+		}
+	})
 
 	if len(flag.Args()) < 2 {
 		usageExit(usageExample)
@@ -125,11 +133,23 @@ func main() {
 		return allLines[i].Timestamp.Before(allLines[j].Timestamp)
 	})
 
+	currentTime := asOfTime() // This will be time.Now() if --asof isn't used, or the parsed asOfStr time.
+
 	switch unit {
 	case UnitMinutes, UnitHours, UnitDays, UnitWeeks, UnitMonths:
-		// Time-based query => lines >= (asOfTime - N)
-		cutoff := computeTimeCutoff(n, unit, asOfTime())
-		filtered := filterByTimeAfter(allLines, cutoff)
+		var filtered []LogLine
+		if asOfUsed {
+			// If --asof is used, filter within the N-unit window ending at asOfTime
+			lowerBound := computeTimeCutoff(n, unit, currentTime)
+			filtered = filterByTimeRange(allLines, lowerBound, currentTime)
+		} else {
+			// If --asof is NOT used, filter from N units ago until the end of logs.
+			// This means we are showing logs from the cutoff up to the last available log line,
+			// which matches the "last N units from now" expectation.
+			cutoff := computeTimeCutoff(n, unit, currentTime) // currentTime is time.Now() here
+			filtered = filterByTimeAfter(allLines, cutoff)
+		}
+
 		if !keepMeta {
 			filtered = removeAllMetadata(filtered)
 		}
@@ -142,8 +162,7 @@ func main() {
 
 	case UnitMeetings:
 		// Meeting-based => lines <= asOfTime => last N intervals
-		cutoff := asOfTime()
-		linesBeforeAsOf := filterByTimeBefore(allLines, cutoff)
+		linesBeforeAsOf := filterByTimeBefore(allLines, currentTime)
 
 		intervals := findMeetingIntervals(linesBeforeAsOf)
 		if len(intervals) == 0 {
@@ -165,14 +184,14 @@ func main() {
 
 func removeDatePrefix(lines []LogLine) []LogLine {
 	// Regex explanation:
-	// ^                      start of the string
-	// [0-9]{4}               4 digits of year
-	// /[0-9]{2}/[0-9]{2}     slash-separated month/day
-	// \s+                    one or more spaces
-	// [0-9]{2}:[0-9]{2}:[0-9]{2}  HH:MM:SS
-	// \s+                    one or more spaces
-	// [A-Z]{1,5}             1 to 5 uppercase letters for timezone (e.g. PST, MST, UTC)
-	// \s*                    zero or more trailing spaces
+	// ^                     start of the string
+	// [0-9]{4}              4 digits of year
+	// /[0-9]{2}/[0-9]{2}    slash-separated month/day
+	// \s+                   one or more spaces
+	// [0-9]{2}:[0-9]{2}:[0-9]{2} HH:MM:SS
+	// \s+                   one or more spaces
+	// [A-Z]{1,5}            1 to 5 uppercase letters for timezone (e.g. PST, MST, UTC)
+	// \s* zero or more trailing spaces
 	re := regexp.MustCompile(`^[0-9]{4}/[0-9]{2}/[0-9]{2}\s+[0-9]{2}:[0-9]{2}:[0-9]{2}\s+[A-Z]{1,5}\s*-\s*`)
 
 	result := make([]LogLine, len(lines))
@@ -309,6 +328,18 @@ func parseLogLine(raw string) (LogLine, bool) {
 		ln.IsMeetingEnd = true
 	}
 	return ln, true
+}
+
+// filterByTimeRange returns all lines whose timestamp is between lower and upper bounds (inclusive).
+func filterByTimeRange(lines []LogLine, lower, upper time.Time) []LogLine {
+	var out []LogLine
+	for _, ln := range lines {
+		if (ln.Timestamp.After(lower) || ln.Timestamp.Equal(lower)) &&
+			(ln.Timestamp.Before(upper) || ln.Timestamp.Equal(upper)) {
+			out = append(out, ln)
+		}
+	}
+	return out
 }
 
 // filterByTimeAfter returns all lines whose timestamp >= cutoff

@@ -1,3 +1,4 @@
+// transcription.go
 package main
 
 import (
@@ -119,10 +120,13 @@ func StartTranscriptionLoop(
 	}
 	defer cleanupRecorder(rec)
 
+	// Initialize ticker for keep-alive or other periodic tasks if needed
+	// (Optional based on your current implementation)
+
 	for {
 		select {
 		case <-ctx.Done():
-			// context canceled (e.g., user hit Ctrl-C)
+			// Context canceled (e.g., user hit Ctrl-C)
 			return nil
 		default:
 			// Read audio samples from the microphone
@@ -138,10 +142,67 @@ func StartTranscriptionLoop(
 				continue
 			}
 
-			// Send partial samples to the transcription backend
-			if err := backend.Send(ctx, audioData); err != nil {
-				return fmt.Errorf("send to backend failed: %w", err)
+			// Attempt to send data to the backend
+			err = backend.Send(ctx, audioData)
+			if err != nil {
+				log.Printf("Warning: failed to send data to backend: %v", err)
+
+				// Handle backend unavailability
+				// Attempt to reconnect with exponential backoff
+				if err := handleBackendReconnect(ctx, backend); err != nil {
+					log.Printf("Error during backend reconnection: %v", err)
+					// Depending on your preference, you can choose to continue or return
+					// Here, we'll continue to allow further retries
+					continue
+				}
+
+				// After reconnection, continue the loop to retry sending
+				continue
 			}
 		}
 	}
+}
+
+// handleBackendReconnect attempts to reconnect the backend with exponential backoff.
+// It logs each attempt and respects the context cancellation.
+func handleBackendReconnect(ctx context.Context, backend TranscriptionBackend) error {
+	backoff := time.Second * 5     // Initial backoff duration
+	maxBackoff := time.Second * 30 // Maximum backoff duration
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context canceled during reconnection")
+		default:
+			log.Println("Attempting to reconnect to transcription backend...")
+
+			// Attempt to disconnect gracefully before reconnecting
+			if err := backend.Disconnect(ctx, false); err != nil {
+				log.Printf("Warning: failed to disconnect backend: %v", err)
+			}
+
+			// Attempt to reconnect
+			err := backend.Connect(ctx)
+			if err != nil {
+				log.Printf("Reconnect attempt failed: %v", err)
+				log.Printf("Retrying in %v...", backoff)
+				time.Sleep(backoff)
+
+				// Exponential backoff with a cap
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
+
+			log.Println("Successfully reconnected to transcription backend.")
+			return nil
+		}
+	}
+}
+
+// getDateTime returns the current local time formatted as specified.
+func getDateTime() string {
+	return time.Now().Format("2006/01/02 15:04:05 EST")
 }
