@@ -59,7 +59,15 @@ Note: Place flags *before* N/unit in Go’s default flag parsing, e.g.:
 )
 
 var (
+	// Old format: "2024/01/15 14:30:00 EST - transcript text"
 	tsRegex = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}\s+[A-Z]{3})\s+(.*)$`)
+
+	// New format heartbeat: "%% time: 2024/01/15 14:30:00 EST"
+	heartbeatRegex = regexp.MustCompile(`^%%\s*time:\s*(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}\s+[A-Z]{3})`)
+
+	// New format meeting markers: "%% meeting started: 2024/01/15 14:30:00 EST zoom"
+	newMeetingStartRegex = regexp.MustCompile(`^%%\s*meeting started:`)
+	newMeetingEndRegex   = regexp.MustCompile(`^%%\s*meeting ended:`)
 
 	keepMeta         bool
 	trimDate         bool
@@ -266,7 +274,8 @@ func gatherLogFiles(dir string) ([]string, error) {
 		if e.IsDir() {
 			continue
 		}
-		if strings.HasSuffix(e.Name(), ".log") {
+		// Support both .log (aai format) and .txt (localdsmc format)
+		if strings.HasSuffix(e.Name(), ".log") || strings.HasSuffix(e.Name(), ".txt") {
 			files = append(files, filepath.Join(dir, e.Name()))
 		}
 	}
@@ -282,26 +291,64 @@ func readAndParseAll(dir string) ([]LogLine, error) {
 	if len(files) == 0 {
 		return nil, nil
 	}
+
 	var all []LogLine
 	for _, fpath := range files {
-		f, err := os.Open(fpath)
+		lines, err := readAndParseFile(fpath)
 		if err != nil {
-			return nil, err
+			// Log warning and continue with other files
+			log.Printf("Warning: skipping %s: %v", filepath.Base(fpath), err)
+			continue
 		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			raw := scanner.Text()
-			ln, ok := parseLogLine(raw)
-			if ok {
-				all = append(all, ln)
-			}
-		}
-		f.Close()
-		if err := scanner.Err(); err != nil {
-			return nil, err
-		}
+		all = append(all, lines...)
 	}
 	return all, nil
+}
+
+func readAndParseFile(fpath string) ([]LogLine, error) {
+	f, err := os.Open(fpath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	// Track the current heartbeat timestamp for files using the new format
+	var currentHeartbeat time.Time
+
+	// Try to extract start time from filename for fallback
+	// Format: transcript_YYYYMMDD_HHMMSS.txt
+	baseName := filepath.Base(fpath)
+	if m := regexp.MustCompile(`(\d{8})_(\d{6})`).FindStringSubmatch(baseName); len(m) == 3 {
+		if t, err := time.Parse("20060102_150405", m[1]+"_"+m[2]); err == nil {
+			currentHeartbeat = t
+		}
+	}
+
+	// Use larger buffer to handle long lines (1MB max)
+	scanner := bufio.NewScanner(f)
+	buf := make([]byte, 64*1024)   // 64KB initial buffer
+	scanner.Buffer(buf, 1024*1024) // 1MB max token size
+
+	var lines []LogLine
+	for scanner.Scan() {
+		raw := scanner.Text()
+
+		// Skip empty lines
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+
+		ln, ok := parseLogLineWithHeartbeat(raw, &currentHeartbeat)
+		if ok {
+			lines = append(lines, ln)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return lines, nil
 }
 
 func parseLogLine(raw string) (LogLine, bool) {
@@ -328,6 +375,92 @@ func parseLogLine(raw string) (LogLine, bool) {
 		ln.IsMeetingEnd = true
 	}
 	return ln, true
+}
+
+// parseLogLineWithHeartbeat handles both old and new log formats.
+// For new format, it tracks heartbeat timestamps and assigns them to plain text lines.
+func parseLogLineWithHeartbeat(raw string, currentHeartbeat *time.Time) (LogLine, bool) {
+	// First, try the old format (timestamp prefix on every line)
+	if m := tsRegex.FindStringSubmatch(raw); len(m) == 3 {
+		parsedTime, err := time.Parse(lineLayout, m[1])
+		if err != nil {
+			return LogLine{}, false
+		}
+		rest := strings.TrimSpace(m[2])
+		ln := LogLine{
+			Timestamp: parsedTime,
+			Raw:       raw,
+		}
+		if strings.HasPrefix(rest, "%%%") || strings.HasPrefix(rest, "###") {
+			ln.IsMetadata = true
+		}
+		if strings.Contains(rest, "%%% meeting started") {
+			ln.IsMeetingStart = true
+		}
+		if strings.Contains(rest, "%%% meeting ended") {
+			ln.IsMeetingEnd = true
+		}
+		// Update heartbeat for consistency
+		*currentHeartbeat = parsedTime
+		return ln, true
+	}
+
+	// New format: check for heartbeat timestamp line
+	if m := heartbeatRegex.FindStringSubmatch(raw); len(m) == 2 {
+		parsedTime, err := time.Parse(lineLayout, m[1])
+		if err != nil {
+			return LogLine{}, false
+		}
+		*currentHeartbeat = parsedTime
+		ln := LogLine{
+			Timestamp:  parsedTime,
+			Raw:        raw,
+			IsMetadata: true, // Heartbeat lines are metadata
+		}
+		return ln, true
+	}
+
+	// New format: check for meeting markers
+	if newMeetingStartRegex.MatchString(raw) {
+		ln := LogLine{
+			Timestamp:      *currentHeartbeat,
+			Raw:            raw,
+			IsMetadata:     true,
+			IsMeetingStart: true,
+		}
+		return ln, true
+	}
+	if newMeetingEndRegex.MatchString(raw) {
+		ln := LogLine{
+			Timestamp:    *currentHeartbeat,
+			Raw:          raw,
+			IsMetadata:   true,
+			IsMeetingEnd: true,
+		}
+		return ln, true
+	}
+
+	// New format: check for other metadata lines (starting with %%)
+	if strings.HasPrefix(raw, "%%") {
+		ln := LogLine{
+			Timestamp:  *currentHeartbeat,
+			Raw:        raw,
+			IsMetadata: true,
+		}
+		return ln, true
+	}
+
+	// New format: plain transcript text (use current heartbeat timestamp)
+	if !currentHeartbeat.IsZero() {
+		ln := LogLine{
+			Timestamp: *currentHeartbeat,
+			Raw:       raw,
+		}
+		return ln, true
+	}
+
+	// No timestamp available - skip this line
+	return LogLine{}, false
 }
 
 // filterByTimeRange returns all lines whose timestamp is between lower and upper bounds (inclusive).
