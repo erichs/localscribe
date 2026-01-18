@@ -1,4 +1,4 @@
-package main
+package last
 
 import (
 	"os"
@@ -17,7 +17,7 @@ func TestHeartbeatRegex(t *testing.T) {
 		{"%% time: 2026/01/17 23:04:29 EST", true},
 		{"%%time: 2026/01/17 23:04:29 EST", true},
 		{"%% time:2026/01/17 23:04:29 EST", true},
-		{"% time: 2026/01/17 23:04:29 EST", false},  // Single % should NOT match
+		{"% time: 2026/01/17 23:04:29 EST", false},   // Single % should NOT match
 		{"%%% time: 2026/01/17 23:04:29 EST", false}, // Triple % should NOT match
 		{"time: 2026/01/17 23:04:29 EST", false},     // No prefix should NOT match
 	}

@@ -1,10 +1,11 @@
-package main
+package last
 
 import (
 	"bufio"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -43,18 +44,18 @@ const (
 const (
 	lineLayout   = "2006/01/02 15:04:05 MST"
 	usageExample = `
-Usage: lastscribed [--dir path] [--keepmeta] [--asof "YYYY/MM/DD HH:MM:SS MST"] <N> <unit>
+Usage: localscribe last [--dir path] [--keepmeta] [--asof "YYYY/MM/DD HH:MM:SS MST"] <N> <unit>
 
 Examples:
-  lastscribed 20 min
-  lastscribed 3 hours
-  lastscribed 2 days
-  lastscribed 1 week
-  lastscribed 2 meetings
-  lastscribed --asof="2024/12/31 23:45:00 EST" 2 hours
+  localscribe last 20 min
+  localscribe last 3 hours
+  localscribe last 2 days
+  localscribe last 1 week
+  localscribe last 2 meetings
+  localscribe last --asof="2024/12/31 23:45:00 EST" 2 hours
 
 Note: Place flags *before* N/unit in Go’s default flag parsing, e.g.:
-  lastscribed --asof="2024/12/31 23:45:00 EST" 2 meetings
+  localscribe last --asof="2024/12/31 23:45:00 EST" 2 meetings
 `
 )
 
@@ -68,13 +69,17 @@ var (
 	// New format meeting markers: "%% meeting started: 2024/01/15 14:30:00 EST zoom"
 	newMeetingStartRegex = regexp.MustCompile(`^%%\s*meeting started:`)
 	newMeetingEndRegex   = regexp.MustCompile(`^%%\s*meeting ended:`)
-
-	keepMeta         bool
-	trimDate         bool
-	userSpecifiedDir string
-	asOfStr          string
-	asOfUsed         bool // New flag to indicate if --asof was specified
 )
+
+var errUsage = errors.New("invalid usage")
+
+type Options struct {
+	Dir      string
+	KeepMeta bool
+	TrimDate bool
+	AsOf     string
+	AsOfUsed bool
+}
 
 func computeTimeCutoff(n int, unit int, baseTime time.Time) time.Time {
 	switch unit {
@@ -93,47 +98,40 @@ func computeTimeCutoff(n int, unit int, baseTime time.Time) time.Time {
 	}
 }
 
-func main() {
-	flag.StringVar(&userSpecifiedDir, "dir", "",
-		"Transcription directory (overrides env TRANSCRIPTION_DIR).")
-	flag.BoolVar(&keepMeta, "keepmeta", false,
-		"Keep all metadata lines (instead of hiding them).")
-	flag.BoolVar(&trimDate, "trimdate", false,
-		"Remove datestamps from start of lines.")
-	flag.StringVar(&asOfStr, "asof", "",
-		`Use this "YYYY/MM/DD HH:MM:SS MST" instead of time.Now() for filtering.`)
-	flag.Parse()
+func Usage(w io.Writer) {
+	fmt.Fprint(w, usageExample)
+}
 
-	// Check if --asof was actually provided on the command line
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "asof" {
-			asOfUsed = true
-		}
-	})
-
-	if len(flag.Args()) < 2 {
-		usageExit(usageExample)
+func Run(args []string, stdout, stderr io.Writer) error {
+	opts, remaining, err := parseFlags(args)
+	if err != nil {
+		return err
 	}
-	nStr := flag.Arg(0)
-	unitStr := flag.Arg(1)
+
+	if len(remaining) < 2 {
+		Usage(stderr)
+		return errUsage
+	}
+	nStr := remaining[0]
+	unitStr := remaining[1]
 
 	n, err := strconv.Atoi(nStr)
 	if err != nil {
-		log.Fatalf("Invalid N '%s': %v\n", nStr, err)
+		return fmt.Errorf("invalid N '%s': %w", nStr, err)
 	}
 	unit, err := parseUnit(unitStr)
 	if err != nil {
-		log.Fatalf("Unrecognized unit '%s': %v\n", unitStr, err)
+		return fmt.Errorf("unrecognized unit '%s': %w", unitStr, err)
 	}
 
-	dir := determineDirectory(userSpecifiedDir)
+	dir := determineDirectory(opts.Dir)
 
 	allLines, err := readAndParseAll(dir)
 	if err != nil {
-		log.Fatalf("Failed reading logs: %v\n", err)
+		return fmt.Errorf("failed reading logs: %w", err)
 	}
 	if len(allLines) == 0 {
-		return
+		return nil
 	}
 
 	// Sort ascending
@@ -141,12 +139,15 @@ func main() {
 		return allLines[i].Timestamp.Before(allLines[j].Timestamp)
 	})
 
-	currentTime := asOfTime() // This will be time.Now() if --asof isn't used, or the parsed asOfStr time.
+	currentTime, err := asOfTime(opts.AsOf)
+	if err != nil {
+		return err
+	}
 
 	switch unit {
 	case UnitMinutes, UnitHours, UnitDays, UnitWeeks, UnitMonths:
 		var filtered []LogLine
-		if asOfUsed {
+		if opts.AsOfUsed {
 			// If --asof is used, filter within the N-unit window ending at asOfTime
 			lowerBound := computeTimeCutoff(n, unit, currentTime)
 			filtered = filterByTimeRange(allLines, lowerBound, currentTime)
@@ -158,14 +159,14 @@ func main() {
 			filtered = filterByTimeAfter(allLines, cutoff)
 		}
 
-		if !keepMeta {
+		if !opts.KeepMeta {
 			filtered = removeAllMetadata(filtered)
 		}
-		if trimDate {
+		if opts.TrimDate {
 			filtered = removeDatePrefix(filtered)
 		}
 		for _, ln := range filtered {
-			fmt.Println(ln.Raw)
+			fmt.Fprintln(stdout, ln.Raw)
 		}
 
 	case UnitMeetings:
@@ -174,8 +175,8 @@ func main() {
 
 		intervals := findMeetingIntervals(linesBeforeAsOf)
 		if len(intervals) == 0 {
-			log.Println("Warning: No 'meeting started' lines found before asof. Returning no data.")
-			return
+			fmt.Fprintln(stderr, "Warning: No 'meeting started' lines found before asof. Returning no data.")
+			return nil
 		}
 
 		var selected []MeetingInterval
@@ -183,11 +184,34 @@ func main() {
 			selected = intervals[len(intervals)-n:]
 		} else {
 			selected = intervals
-			log.Printf("Warning: Only %d intervals found, asked for %d.\n", len(intervals), n)
+			fmt.Fprintf(stderr, "Warning: Only %d intervals found, asked for %d.\n", len(intervals), n)
 		}
 
-		gatherAndPrintMeetings(linesBeforeAsOf, selected, keepMeta, trimDate)
+		gatherAndPrintMeetings(stdout, linesBeforeAsOf, selected, opts.KeepMeta, opts.TrimDate)
 	}
+
+	return nil
+}
+
+func parseFlags(args []string) (*Options, []string, error) {
+	opts := &Options{}
+	fs := flag.NewFlagSet("localscribe last", flag.ContinueOnError)
+	fs.StringVar(&opts.Dir, "dir", "", "Transcription directory (overrides env TRANSCRIPTION_DIR).")
+	fs.BoolVar(&opts.KeepMeta, "keepmeta", false, "Keep all metadata lines (instead of hiding them).")
+	fs.BoolVar(&opts.TrimDate, "trimdate", false, "Remove datestamps from start of lines.")
+	fs.StringVar(&opts.AsOf, "asof", "", `Use this "YYYY/MM/DD HH:MM:SS MST" instead of time.Now() for filtering.`)
+
+	if err := fs.Parse(args); err != nil {
+		return nil, nil, err
+	}
+
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "asof" {
+			opts.AsOfUsed = true
+		}
+	})
+
+	return opts, fs.Args(), nil
 }
 
 func removeDatePrefix(lines []LogLine) []LogLine {
@@ -212,11 +236,6 @@ func removeDatePrefix(lines []LogLine) []LogLine {
 	return result
 }
 
-func usageExit(msg string) {
-	fmt.Fprintln(os.Stderr, msg)
-	os.Exit(1)
-}
-
 func parseUnit(unitStr string) (int, error) {
 	u := strings.ToLower(unitStr)
 	switch u {
@@ -236,15 +255,15 @@ func parseUnit(unitStr string) (int, error) {
 	return -1, errors.New("invalid unit")
 }
 
-func asOfTime() time.Time {
+func asOfTime(asOfStr string) (time.Time, error) {
 	if asOfStr == "" {
-		return time.Now()
+		return time.Now(), nil
 	}
 	parsed, err := time.Parse(lineLayout, asOfStr)
 	if err != nil {
-		log.Fatalf("Failed to parse --asof '%s' with layout '%s': %v\n", asOfStr, lineLayout, err)
+		return time.Time{}, fmt.Errorf("failed to parse --asof '%s' with layout '%s': %w", asOfStr, lineLayout, err)
 	}
-	return parsed
+	return parsed, nil
 }
 
 func determineDirectory(flagVal string) string {
@@ -274,7 +293,7 @@ func gatherLogFiles(dir string) ([]string, error) {
 		if e.IsDir() {
 			continue
 		}
-		// Support both .log (aai format) and .txt (localdsmc format)
+		// Support both .log (aai format) and .txt (localscribe format)
 		if strings.HasSuffix(e.Name(), ".log") || strings.HasSuffix(e.Name(), ".txt") {
 			files = append(files, filepath.Join(dir, e.Name()))
 		}
@@ -548,7 +567,7 @@ func findMeetingIntervals(all []LogLine) []MeetingInterval {
 	return intervals
 }
 
-func gatherAndPrintMeetings(all []LogLine, intervals []MeetingInterval, keepAllMetadata bool, trimDate bool) {
+func gatherAndPrintMeetings(w io.Writer, all []LogLine, intervals []MeetingInterval, keepAllMetadata bool, trimDate bool) {
 	if trimDate {
 		all = removeDatePrefix(all)
 	}
@@ -562,10 +581,10 @@ func gatherAndPrintMeetings(all []LogLine, intervals []MeetingInterval, keepAllM
 				}
 			}
 
-			fmt.Println(ln.Raw)
+			fmt.Fprintln(w, ln.Raw)
 		}
 		if ivIdx < len(intervals)-1 {
-			fmt.Println("======")
+			fmt.Fprintln(w, "======")
 		}
 	}
 }

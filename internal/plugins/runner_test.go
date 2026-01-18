@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"localdsmc/internal/config"
-	"localdsmc/internal/meetings"
+	"localscribe/internal/config"
+	"localscribe/internal/meetings"
 )
 
 // mockWriter captures metadata writes for testing.

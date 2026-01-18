@@ -1,5 +1,5 @@
-# localdsmc configuration file
-# Copy to ~/.localdsmc.yaml or ~/.config/localdsmc/config.yaml
+# localscribe configuration file
+# Copy to ~/.localscribe.yaml or ~/.config/localscribe/config.yaml
 
 # WebSocket server URL (default: ws://127.0.0.1:8080)
 server_url: ws://127.0.0.1:8080
@@ -19,7 +19,7 @@ filename_template: transcript_%Y%m%d_%H%M%S.txt
 gain: 1.0
 
 # Audio input device index (default: -1 = default device)
-# Use `localdsmc -list-devices` to see available devices
+# Use `localscribe -list-devices` to see available devices
 device_index: -1
 
 # Pause transcription on VAD end-of-turn detection (default: false)
@@ -65,7 +65,7 @@ metadata:
   plugins:
     # Example: Git context at session start
     # - name: "git-context"
-    #   command: "~/.config/localdsmc/plugins/git-context.sh"
+    #   command: "~/.config/localscribe/plugins/git-context.sh"
     #   trigger: on_start
     #   timeout: 5s
 
@@ -88,11 +88,11 @@ metadata:
 
     # Example: Log meeting start to external service
     # - name: "meeting-logger"
-    #   command: "~/.config/localdsmc/plugins/log-meeting.sh"
+    #   command: "~/.config/localscribe/plugins/log-meeting.sh"
     #   trigger: on_meeting_start
 
     # Example: Create summary on meeting end
     # - name: "meeting-summary"
-    #   command: "~/.config/localdsmc/plugins/summarize.sh"
+    #   command: "~/.config/localscribe/plugins/summarize.sh"
     #   trigger: on_meeting_end
     #   timeout: 30s

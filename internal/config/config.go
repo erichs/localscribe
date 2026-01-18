@@ -1,4 +1,4 @@
-// Package config handles configuration loading and merging for localdsmc.
+// Package config handles configuration loading and merging for localscribe.
 package config
 
 import (
@@ -193,7 +193,7 @@ func Load(path string) (*Config, error) {
 
 // FindConfigFile searches for a config file in standard locations.
 // If explicitPath is provided, returns it directly.
-// Otherwise searches in: current dir, ~/.config/localdsmc/, ~/
+// Otherwise searches in: current dir, ~/.config/localscribe/, ~/
 func FindConfigFile(explicitPath string) string {
 	if explicitPath != "" {
 		return explicitPath
@@ -201,17 +201,17 @@ func FindConfigFile(explicitPath string) string {
 
 	// Search locations in order of preference
 	locations := []string{
-		".localdsmc.yaml",
-		".localdsmc.yml",
+		".localscribe.yaml",
+		".localscribe.yml",
 	}
 
 	// Add home directory locations
 	if home, err := os.UserHomeDir(); err == nil {
 		locations = append(locations,
-			filepath.Join(home, ".config", "localdsmc", "config.yaml"),
-			filepath.Join(home, ".config", "localdsmc", "config.yml"),
-			filepath.Join(home, ".localdsmc.yaml"),
-			filepath.Join(home, ".localdsmc.yml"),
+			filepath.Join(home, ".config", "localscribe", "config.yaml"),
+			filepath.Join(home, ".config", "localscribe", "config.yml"),
+			filepath.Join(home, ".localscribe.yaml"),
+			filepath.Join(home, ".localscribe.yml"),
 		)
 	}
 

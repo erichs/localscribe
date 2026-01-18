@@ -1,4 +1,4 @@
-// Package plugins provides plugin execution for localdsmc.
+// Package plugins provides plugin execution for localscribe.
 package plugins
 
 import (
@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"localdsmc/internal/config"
-	"localdsmc/internal/meetings"
+	"localscribe/internal/config"
+	"localscribe/internal/meetings"
 )
 
 // DefaultTimeout is the default plugin execution timeout.

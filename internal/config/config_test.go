@@ -204,7 +204,7 @@ func TestFindConfigFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a config file in the temp dir
-	configPath := filepath.Join(tmpDir, ".localdsmc.yaml")
+	configPath := filepath.Join(tmpDir, ".localscribe.yaml")
 	err := os.WriteFile(configPath, []byte("output_dir: /test"), 0644)
 	require.NoError(t, err)
 

@@ -1,4 +1,4 @@
-package main
+package record
 
 import (
 	"bytes"
@@ -13,10 +13,10 @@ import (
 
 func TestParseFlags(t *testing.T) {
 	tests := []struct {
-		name     string
-		args     []string
-		check    func(t *testing.T, f *Flags)
-		wantErr  bool
+		name    string
+		args    []string
+		check   func(t *testing.T, f *Flags)
+		wantErr bool
 	}{
 		{
 			name: "no flags",
@@ -253,16 +253,16 @@ func TestFlagsToOverrides(t *testing.T) {
 func TestRunVersion(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	err := run([]string{"-version"}, &stdout, &stderr)
+	err := Run([]string{"-version"}, &stdout, &stderr)
 	require.NoError(t, err)
 
-	assert.Contains(t, stdout.String(), "localdsmc version")
+	assert.Contains(t, stdout.String(), "localscribe version")
 }
 
 func TestRunListDevices(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	err := run([]string{"-list-devices"}, &stdout, &stderr)
+	err := Run([]string{"-list-devices"}, &stdout, &stderr)
 	// This may fail if portaudio isn't available, but shouldn't panic
 	if err != nil {
 		assert.Contains(t, err.Error(), "device")
@@ -275,7 +275,7 @@ func TestRunInvalidConfig(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Invalid gain (0)
-	err := run([]string{"-gain", "0"}, &stdout, &stderr)
+	err := Run([]string{"-gain", "0"}, &stdout, &stderr)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "gain")
 }
