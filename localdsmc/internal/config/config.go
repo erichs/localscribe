@@ -44,6 +44,73 @@ type MetadataConfig struct {
 
 	// GoogleCredentialsFile is the path to Google OAuth credentials.
 	GoogleCredentialsFile string `yaml:"google_credentials_file"`
+
+	// Plugins is a list of external plugins to execute at various lifecycle events.
+	Plugins []PluginConfig `yaml:"plugins"`
+}
+
+// PluginConfig defines an external plugin to execute.
+type PluginConfig struct {
+	// Name is a unique identifier for the plugin (used in metadata output).
+	Name string `yaml:"name"`
+
+	// Command is the shell command or script to execute.
+	Command string `yaml:"command"`
+
+	// Trigger determines when the plugin runs.
+	// Valid values: on_start, on_meeting_start, on_meeting_end, periodic
+	Trigger TriggerType `yaml:"trigger"`
+
+	// Interval is the period between executions in seconds (only for periodic trigger).
+	Interval int `yaml:"interval"`
+
+	// Timeout is the maximum time the plugin can run before being killed.
+	// Default: 5s. Format: Go duration string (e.g., "5s", "1m").
+	Timeout Duration `yaml:"timeout"`
+}
+
+// TriggerType defines when a plugin should execute.
+type TriggerType string
+
+const (
+	TriggerOnStart        TriggerType = "on_start"
+	TriggerOnMeetingStart TriggerType = "on_meeting_start"
+	TriggerOnMeetingEnd   TriggerType = "on_meeting_end"
+	TriggerPeriodic       TriggerType = "periodic"
+)
+
+// Duration is a wrapper around time.Duration for YAML unmarshaling.
+type Duration time.Duration
+
+// UnmarshalYAML implements yaml.Unmarshaler for Duration.
+func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Try parsing as an integer first (seconds)
+	var secs int
+	if err := unmarshal(&secs); err == nil {
+		*d = Duration(time.Duration(secs) * time.Second)
+		return nil
+	}
+
+	// Try parsing as a duration string (e.g., "5s", "2m")
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	if s == "" {
+		*d = 0
+		return nil
+	}
+	dur, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = Duration(dur)
+	return nil
+}
+
+// Duration returns the underlying time.Duration.
+func (d Duration) Duration() time.Duration {
+	return time.Duration(d)
 }
 
 // FlagOverrides contains CLI flag values that override config file settings.

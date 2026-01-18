@@ -30,3 +30,69 @@ pause_threshold: 2.0
 
 # Enable debug output (default: false)
 debug: false
+
+# Metadata configuration
+metadata:
+  # Heartbeat timestamp interval in seconds (0 to disable)
+  heartbeat_interval: 60
+
+  # Enable Zoom meeting detection
+  zoom_detection: false
+
+  # Enable Google Meet detection
+  meet_detection: false
+
+  # Plugin configuration
+  # Plugins are external scripts/executables that run at defined lifecycle events.
+  # Each plugin's stdout is captured and written as metadata lines:
+  #   %% plugin-name: <line>
+  #
+  # Environment variables passed to plugins:
+  #   LOCALDSMC_EVENT         - on_start, on_meeting_start, on_meeting_end, periodic
+  #   LOCALDSMC_OUTPUT_FILE   - path to current transcript file
+  #   LOCALDSMC_TIMESTAMP     - current timestamp (RFC3339 format)
+  #
+  # Meeting events also include:
+  #   LOCALDSMC_MEETING_TYPE  - zoom or meet
+  #   LOCALDSMC_MEETING_CODE  - meeting code (e.g., "abc-defg-hij" for Meet)
+  #   LOCALDSMC_MEETING_TITLE - meeting title (if available)
+  #   LOCALDSMC_MEETING_DURATION - duration in seconds (on_meeting_end only)
+  #
+  # Plugins run in parallel and cannot depend on each other.
+  # Errors are logged to stderr but don't stop transcription.
+  # Use --debug to see plugin stdout/stderr in console.
+
+  plugins:
+    # Example: Git context at session start
+    # - name: "git-context"
+    #   command: "~/.config/localdsmc/plugins/git-context.sh"
+    #   trigger: on_start
+    #   timeout: 5s
+
+    # Example: Current git branch (inline command)
+    # - name: "git-branch"
+    #   command: "git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'not a git repo'"
+    #   trigger: on_start
+
+    # Example: Location from IP
+    # - name: "location"
+    #   command: "curl -s ipinfo.io/city"
+    #   trigger: on_start
+    #   timeout: 3s
+
+    # Example: Pomodoro timer (runs every 25 minutes)
+    # - name: "pomodoro"
+    #   command: "echo 'Take a break!'"
+    #   trigger: periodic
+    #   interval: 1500
+
+    # Example: Log meeting start to external service
+    # - name: "meeting-logger"
+    #   command: "~/.config/localdsmc/plugins/log-meeting.sh"
+    #   trigger: on_meeting_start
+
+    # Example: Create summary on meeting end
+    # - name: "meeting-summary"
+    #   command: "~/.config/localdsmc/plugins/summarize.sh"
+    #   trigger: on_meeting_end
+    #   timeout: 30s

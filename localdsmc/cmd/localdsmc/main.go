@@ -16,6 +16,7 @@ import (
 	"localdsmc/internal/client"
 	"localdsmc/internal/config"
 	"localdsmc/internal/meetings"
+	"localdsmc/internal/plugins"
 	"localdsmc/internal/processor"
 	"localdsmc/internal/writer"
 )
@@ -256,6 +257,22 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 	// Create multi-writer for stdout and file
 	multiWriter := writer.NewMultiWriter(fileWriter, stdout)
 
+	// Create plugin runner
+	pluginRunner := plugins.NewRunner(cfg.Metadata.Plugins, multiWriter, cfg.Debug, stderr)
+	pluginCtx, pluginCancel := context.WithCancel(context.Background())
+	defer pluginCancel()
+
+	// Execute on_start plugins
+	if pluginRunner.HasTrigger(config.TriggerOnStart) {
+		if cfg.Debug {
+			fmt.Fprintf(stderr, "[DEBUG] Executing on_start plugins...\n")
+		}
+		execCtx := &plugins.ExecuteContext{
+			OutputFile: outputPath,
+		}
+		pluginRunner.Execute(pluginCtx, config.TriggerOnStart, execCtx)
+	}
+
 	// Create post-processor
 	postProc := processor.New(processor.Options{
 		PauseThreshold: time.Duration(cfg.PauseThreshold * float64(time.Second)),
@@ -303,6 +320,17 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 		}()
 	}
 
+	// Start periodic plugins
+	if pluginRunner.HasTrigger(config.TriggerPeriodic) {
+		if cfg.Debug {
+			fmt.Fprintf(stderr, "[DEBUG] Starting periodic plugins...\n")
+		}
+		execCtx := &plugins.ExecuteContext{
+			OutputFile: outputPath,
+		}
+		pluginRunner.StartPeriodic(pluginCtx, execCtx)
+	}
+
 	// Start combined meeting detection if Zoom or Meet detection is enabled
 	var meetingDetectorCancel context.CancelFunc
 	if cfg.Metadata.ZoomDetection || cfg.Metadata.MeetDetection {
@@ -329,6 +357,17 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 						}
 					}
 				}
+
+				// Execute on_meeting_start plugins
+				if pluginRunner.HasTrigger(config.TriggerOnMeetingStart) {
+					execCtx := &plugins.ExecuteContext{
+						OutputFile:   outputPath,
+						MeetingType:  info.Type,
+						MeetingCode:  info.Code,
+						MeetingTitle: info.Title,
+					}
+					go pluginRunner.Execute(pluginCtx, config.TriggerOnMeetingStart, execCtx)
+				}
 			},
 			func(meetingType meetings.MeetingType, duration time.Duration) {
 				// Meeting ended
@@ -343,6 +382,16 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 					if cfg.Metadata.MeetDetection {
 						multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting ended: %s meet (duration: %dm)\n", ts, mins))
 					}
+				}
+
+				// Execute on_meeting_end plugins
+				if pluginRunner.HasTrigger(config.TriggerOnMeetingEnd) {
+					execCtx := &plugins.ExecuteContext{
+						OutputFile:      outputPath,
+						MeetingType:     meetingType,
+						MeetingDuration: duration,
+					}
+					go pluginRunner.Execute(pluginCtx, config.TriggerOnMeetingEnd, execCtx)
 				}
 			},
 		)
@@ -515,6 +564,8 @@ shutdown:
 	// Clean shutdown
 	close(done)
 	close(heartbeatDone)
+	pluginRunner.StopPeriodic()
+	pluginCancel()
 	if meetingDetectorCancel != nil {
 		meetingDetectorCancel()
 	}

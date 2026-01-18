@@ -374,3 +374,112 @@ func TestConfigValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfigWithPlugins(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+server_url: ws://localhost:8080
+api_key: test
+gain: 1.0
+
+metadata:
+  heartbeat_interval: 60
+  plugins:
+    - name: "git-branch"
+      command: "git rev-parse --abbrev-ref HEAD"
+      trigger: on_start
+      timeout: 5s
+
+    - name: "pomodoro"
+      command: "echo 'Take a break!'"
+      trigger: periodic
+      interval: 1500
+      timeout: 3s
+
+    - name: "meeting-logger"
+      command: "echo 'Meeting started'"
+      trigger: on_meeting_start
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.Len(t, cfg.Metadata.Plugins, 3)
+
+	// Check first plugin
+	p1 := cfg.Metadata.Plugins[0]
+	assert.Equal(t, "git-branch", p1.Name)
+	assert.Equal(t, "git rev-parse --abbrev-ref HEAD", p1.Command)
+	assert.Equal(t, TriggerOnStart, p1.Trigger)
+	assert.Equal(t, 5*time.Second, p1.Timeout.Duration())
+
+	// Check periodic plugin
+	p2 := cfg.Metadata.Plugins[1]
+	assert.Equal(t, "pomodoro", p2.Name)
+	assert.Equal(t, TriggerPeriodic, p2.Trigger)
+	assert.Equal(t, 1500, p2.Interval)
+	assert.Equal(t, 3*time.Second, p2.Timeout.Duration())
+
+	// Check meeting plugin
+	p3 := cfg.Metadata.Plugins[2]
+	assert.Equal(t, "meeting-logger", p3.Name)
+	assert.Equal(t, TriggerOnMeetingStart, p3.Trigger)
+}
+
+func TestDuration_UnmarshalYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name     string
+		yaml     string
+		expected time.Duration
+	}{
+		{
+			name:     "duration string seconds",
+			yaml:     "metadata:\n  plugins:\n    - name: test\n      timeout: 5s",
+			expected: 5 * time.Second,
+		},
+		{
+			name:     "duration string minutes",
+			yaml:     "metadata:\n  plugins:\n    - name: test\n      timeout: 2m",
+			expected: 2 * time.Minute,
+		},
+		{
+			name:     "duration string milliseconds",
+			yaml:     "metadata:\n  plugins:\n    - name: test\n      timeout: 500ms",
+			expected: 500 * time.Millisecond,
+		},
+		{
+			name:     "integer as seconds",
+			yaml:     "metadata:\n  plugins:\n    - name: test\n      timeout: 10",
+			expected: 10 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(tmpDir, tt.name+".yaml")
+			fullYaml := "server_url: ws://localhost:8080\ngain: 1.0\n" + tt.yaml
+			err := os.WriteFile(configPath, []byte(fullYaml), 0644)
+			require.NoError(t, err)
+
+			cfg, err := Load(configPath)
+			require.NoError(t, err)
+			require.Len(t, cfg.Metadata.Plugins, 1)
+
+			assert.Equal(t, tt.expected, cfg.Metadata.Plugins[0].Timeout.Duration())
+		})
+	}
+}
+
+func TestTriggerTypes(t *testing.T) {
+	// Verify trigger type constants
+	assert.Equal(t, TriggerType("on_start"), TriggerOnStart)
+	assert.Equal(t, TriggerType("on_meeting_start"), TriggerOnMeetingStart)
+	assert.Equal(t, TriggerType("on_meeting_end"), TriggerOnMeetingEnd)
+	assert.Equal(t, TriggerType("periodic"), TriggerPeriodic)
+}
