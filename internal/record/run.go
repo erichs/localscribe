@@ -24,6 +24,7 @@ var (
 	version = "dev"
 )
 
+// Run executes the record subcommand with the provided arguments.
 func Run(args []string, stdout, stderr io.Writer) error {
 	flags, err := parseFlags(args)
 	if err != nil {
@@ -103,6 +104,11 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 
 	// Create multi-writer for stdout and file
 	multiWriter := writer.NewMultiWriter(fileWriter, stdout)
+	logWriteErr := func(action string, err error) {
+		if err != nil {
+			fmt.Fprintf(stderr, "[WARN] %s: %v\n", action, err)
+		}
+	}
 
 	// Create plugin runner
 	pluginRunner := plugins.NewRunner(cfg.Metadata.Plugins, multiWriter, cfg.Debug, stderr)
@@ -153,7 +159,9 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 
 			// Write initial timestamp
 			ts := time.Now().Format("2006/01/02 15:04:05 MST")
-			multiWriter.WriteMetadata(fmt.Sprintf("%%%% time: %s\n", ts))
+			if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% time: %s\n", ts)); err != nil {
+				logWriteErr("failed to write heartbeat metadata", err)
+			}
 
 			for {
 				select {
@@ -161,7 +169,9 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 					return
 				case t := <-ticker.C:
 					ts := t.Format("2006/01/02 15:04:05 MST")
-					multiWriter.WriteMetadata(fmt.Sprintf("%%%% time: %s\n", ts))
+					if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% time: %s\n", ts)); err != nil {
+						logWriteErr("failed to write heartbeat metadata", err)
+					}
 				}
 			}
 		}()
@@ -179,10 +189,9 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 	}
 
 	// Start combined meeting detection if Zoom or Meet detection is enabled
-	var meetingDetectorCancel context.CancelFunc
 	if cfg.Metadata.ZoomDetection || cfg.Metadata.MeetDetection {
-		var meetingCtx context.Context
-		meetingCtx, meetingDetectorCancel = context.WithCancel(context.Background())
+		meetingCtx, meetingDetectorCancel := context.WithCancel(context.Background())
+		defer meetingDetectorCancel()
 
 		detector := meetings.NewDetector(
 			func(info meetings.MeetingInfo) {
@@ -191,16 +200,24 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 				switch info.Type {
 				case meetings.MeetingTypeZoom:
 					if cfg.Metadata.ZoomDetection {
-						multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s zoom\n", ts))
+						if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s zoom\n", ts)); err != nil {
+							logWriteErr("failed to write zoom meeting start metadata", err)
+						}
 					}
 				case meetings.MeetingTypeMeet:
 					if cfg.Metadata.MeetDetection {
 						if info.Title != "" {
-							multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet/%s\n%%%% meeting title: %s\n", ts, info.Code, info.Title))
+							if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet/%s\n%%%% meeting title: %s\n", ts, info.Code, info.Title)); err != nil {
+								logWriteErr("failed to write meet meeting start metadata", err)
+							}
 						} else if info.Code != "" {
-							multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet/%s\n", ts, info.Code))
+							if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet/%s\n", ts, info.Code)); err != nil {
+								logWriteErr("failed to write meet meeting start metadata", err)
+							}
 						} else {
-							multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet\n", ts))
+							if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet\n", ts)); err != nil {
+								logWriteErr("failed to write meet meeting start metadata", err)
+							}
 						}
 					}
 				}
@@ -223,11 +240,15 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 				switch meetingType {
 				case meetings.MeetingTypeZoom:
 					if cfg.Metadata.ZoomDetection {
-						multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting ended: %s zoom (duration: %dm)\n", ts, mins))
+						if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting ended: %s zoom (duration: %dm)\n", ts, mins)); err != nil {
+							logWriteErr("failed to write zoom meeting end metadata", err)
+						}
 					}
 				case meetings.MeetingTypeMeet:
 					if cfg.Metadata.MeetDetection {
-						multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting ended: %s meet (duration: %dm)\n", ts, mins))
+						if err := multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting ended: %s meet (duration: %dm)\n", ts, mins)); err != nil {
+							logWriteErr("failed to write meet meeting end metadata", err)
+						}
 					}
 				}
 
@@ -344,7 +365,9 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 					case *client.WordMessage:
 						output := postProc.ProcessWord(m.Text)
 						if output != "" {
-							multiWriter.Write(output)
+							if err := multiWriter.Write(output); err != nil {
+								logWriteErr("failed to write transcript output", err)
+							}
 						}
 
 					case *client.StepMessage:
@@ -354,7 +377,9 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 							}
 							output := postProc.ProcessEndOfTurn()
 							if output != "" {
-								multiWriter.Write(output)
+								if err := multiWriter.Write(output); err != nil {
+									logWriteErr("failed to write transcript output", err)
+								}
 							}
 						}
 					}
@@ -413,9 +438,6 @@ shutdown:
 	close(heartbeatDone)
 	pluginRunner.StopPeriodic()
 	pluginCancel()
-	if meetingDetectorCancel != nil {
-		meetingDetectorCancel()
-	}
 	// Close workerDone safely (it might already be closed during reconnection)
 	select {
 	case <-workerDone:
@@ -423,12 +445,20 @@ shutdown:
 	default:
 		close(workerDone)
 	}
-	capture.Stop()
-	wsClient.Close()
+	if err := capture.Stop(); err != nil {
+		logWriteErr("failed to stop capture", err)
+	}
+	if err := wsClient.Close(); err != nil {
+		logWriteErr("failed to close websocket", err)
+	}
 
 	// Final newline and flush
-	multiWriter.Write("\n")
-	multiWriter.Flush()
+	if err := multiWriter.Write("\n"); err != nil {
+		logWriteErr("failed to write final newline", err)
+	}
+	if err := multiWriter.Flush(); err != nil {
+		logWriteErr("failed to flush output", err)
+	}
 
 	fmt.Fprintf(stderr, "Transcript saved to: %s\n", outputPath)
 	return nil

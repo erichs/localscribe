@@ -52,10 +52,10 @@ func TestStepMessageDecode(t *testing.T) {
 	msg := map[string]interface{}{
 		"type": "Step",
 		"prs": []interface{}{
-			[]interface{}{float64(0.1)},                             // 0.5s pause
-			[]interface{}{float64(0.2)},                             // 1.0s pause
-			[]interface{}{float64(0.85)},                            // 2.0s pause (end of turn)
-			[]interface{}{float64(0.3)},                             // 3.0s pause
+			[]interface{}{float64(0.1)},  // 0.5s pause
+			[]interface{}{float64(0.2)},  // 1.0s pause
+			[]interface{}{float64(0.85)}, // 2.0s pause (end of turn)
+			[]interface{}{float64(0.3)},  // 3.0s pause
 		},
 	}
 

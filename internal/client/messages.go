@@ -16,6 +16,7 @@ type AudioMessage struct {
 	PCM  []float32 `msgpack:"pcm"`
 }
 
+// MessageType returns the message type identifier.
 func (m *AudioMessage) MessageType() string { return m.Type }
 
 // NewAudioMessage creates a new audio message with the given PCM samples.
@@ -32,6 +33,7 @@ type WordMessage struct {
 	Text string `msgpack:"text"`
 }
 
+// MessageType returns the message type identifier.
 func (m *WordMessage) MessageType() string { return m.Type }
 
 // StepMessage is received from server with VAD information.
@@ -40,6 +42,7 @@ type StepMessage struct {
 	Prs  [][]float64 `msgpack:"prs"`
 }
 
+// MessageType returns the message type identifier.
 func (m *StepMessage) MessageType() string { return m.Type }
 
 // IsEndOfTurn returns true if the VAD indicates end of turn.
@@ -63,6 +66,7 @@ type UnknownMessage struct {
 	Raw  map[string]interface{}
 }
 
+// MessageType returns the message type identifier.
 func (m *UnknownMessage) MessageType() string { return m.Type }
 
 // DecodeMessage decodes a msgpack message and returns the appropriate type.

@@ -14,6 +14,7 @@ import (
 // ZoomState represents the current state of Zoom.
 type ZoomState int
 
+// ZoomState values describe Zoom activity.
 const (
 	ZoomUnknown ZoomState = iota
 	ZoomActiveNoMeeting
@@ -71,8 +72,14 @@ func (d *ZoomDetector) Start(ctx context.Context) error {
 	}
 
 	// Wait for command to finish
-	cmd.Wait()
-	return scanner.Err()
+	waitErr := cmd.Wait()
+	if scanErr := scanner.Err(); scanErr != nil {
+		return scanErr
+	}
+	if waitErr != nil && ctx.Err() == nil {
+		return fmt.Errorf("lsof exited: %w", waitErr)
+	}
+	return nil
 }
 
 // determineState determines the current Zoom state based on lsof output.

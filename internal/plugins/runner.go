@@ -152,6 +152,7 @@ func (r *Runner) executePlugin(ctx context.Context, plugin config.PluginConfig, 
 	env := r.buildEnv(trigger, execCtx)
 
 	// Execute via shell to support pipes, redirects, etc.
+	// #nosec G204 -- plugin commands are user-configured and run intentionally.
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Env = append(os.Environ(), env...)
 

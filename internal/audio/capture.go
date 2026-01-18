@@ -152,13 +152,17 @@ func (c *Capture) Chunks() <-chan []float32 {
 
 // Close releases all resources.
 func (c *Capture) Close() error {
-	c.Stop()
+	if err := c.Stop(); err != nil {
+		return err
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.stream != nil {
-		c.stream.Close()
+		if err := c.stream.Close(); err != nil {
+			return err
+		}
 		c.stream = nil
 	}
 

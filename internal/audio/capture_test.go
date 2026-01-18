@@ -83,9 +83,9 @@ func TestConvertStereoToMono(t *testing.T) {
 	mono := ConvertStereoToMono(stereo)
 
 	assert.Equal(t, 3, len(mono))
-	assert.InDelta(t, 0.4, mono[0], 0.0001) // (0.5+0.3)/2
+	assert.InDelta(t, 0.4, mono[0], 0.0001)  // (0.5+0.3)/2
 	assert.InDelta(t, -0.4, mono[1], 0.0001) // (-0.5-0.3)/2
-	assert.InDelta(t, 0.3, mono[2], 0.0001) // (0.2+0.4)/2
+	assert.InDelta(t, 0.3, mono[2], 0.0001)  // (0.2+0.4)/2
 }
 
 func TestConvertStereoToMonoEmpty(t *testing.T) {

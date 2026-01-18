@@ -1,3 +1,4 @@
+// Package last implements the localscribe last subcommand.
 package last
 
 import (
@@ -17,6 +18,7 @@ import (
 	"time"
 )
 
+// LogLine is a parsed transcript or metadata line with timing data.
 type LogLine struct {
 	Timestamp      time.Time
 	Raw            string
@@ -25,6 +27,7 @@ type LogLine struct {
 	IsMeetingEnd   bool
 }
 
+// MeetingInterval captures start/end indices and times for a meeting.
 type MeetingInterval struct {
 	StartIndex int
 	EndIndex   int
@@ -32,6 +35,7 @@ type MeetingInterval struct {
 	EndTime    time.Time
 }
 
+// Unit* constants define supported time window units.
 const (
 	UnitMinutes = iota
 	UnitHours
@@ -73,6 +77,7 @@ var (
 
 var errUsage = errors.New("invalid usage")
 
+// Options holds flag values for the last subcommand.
 type Options struct {
 	Dir      string
 	KeepMeta bool
@@ -98,10 +103,12 @@ func computeTimeCutoff(n int, unit int, baseTime time.Time) time.Time {
 	}
 }
 
+// Usage prints help for the last subcommand.
 func Usage(w io.Writer) {
 	fmt.Fprint(w, usageExample)
 }
 
+// Run executes the last subcommand with the provided arguments.
 func Run(args []string, stdout, stderr io.Writer) error {
 	opts, remaining, err := parseFlags(args)
 	if err != nil {
@@ -325,6 +332,7 @@ func readAndParseAll(dir string) ([]LogLine, error) {
 }
 
 func readAndParseFile(fpath string) ([]LogLine, error) {
+	// #nosec G304 -- log file paths come from user-controlled directories.
 	f, err := os.Open(fpath)
 	if err != nil {
 		return nil, err

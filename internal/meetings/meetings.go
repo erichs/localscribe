@@ -14,12 +14,14 @@ import (
 	"strings"
 	"time"
 
+	// SQLite driver for Chrome history access.
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // MeetingType identifies the meeting platform.
 type MeetingType int
 
+// MeetingType values identify the meeting platform.
 const (
 	MeetingTypeZoom MeetingType = iota
 	MeetingTypeMeet
@@ -55,7 +57,7 @@ type Detector struct {
 	onMeetingStart func(info MeetingInfo)
 	onMeetingEnd   func(meetingType MeetingType, duration time.Duration)
 
-	state           MeetingState
+	state            MeetingState
 	zoomMeetingStart time.Time
 	meetMeetingStart time.Time
 	meetMeetingInfo  MeetingInfo
@@ -104,8 +106,14 @@ func (d *Detector) Start(ctx context.Context) error {
 		}
 	}
 
-	cmd.Wait()
-	return scanner.Err()
+	waitErr := cmd.Wait()
+	if scanErr := scanner.Err(); scanErr != nil {
+		return scanErr
+	}
+	if waitErr != nil && ctx.Err() == nil {
+		return fmt.Errorf("lsof exited: %w", waitErr)
+	}
+	return nil
 }
 
 // processLsofBatch analyzes a batch of lsof output for meeting state changes.
@@ -240,13 +248,15 @@ func extractMeetTitle(pageTitle string) string {
 
 // copyFile copies a file from src to dst.
 func copyFile(src, dst string) error {
+	// #nosec G304 -- source path is derived from user profile data.
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer srcFile.Close()
 
-	dstFile, err := os.Create(dst)
+	// #nosec G304 -- destination path is within user-controlled temp dirs.
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}

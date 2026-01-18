@@ -51,7 +51,10 @@ func (c *Client) Reconnect(maxAttempts int, onAttempt func(attempt int, delay ti
 	c.mu.Lock()
 	// Close existing connection if any
 	if c.conn != nil {
-		c.conn.Close()
+		if err := c.conn.Close(); err != nil {
+			c.mu.Unlock()
+			return err
+		}
 		c.conn = nil
 	}
 	c.closed = false

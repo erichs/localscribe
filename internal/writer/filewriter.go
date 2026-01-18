@@ -44,11 +44,12 @@ func New(path string) (*FileWriter, error) {
 func NewWithOptions(path string, opts Options) (*FileWriter, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, err
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// #nosec G304 -- output path is user-configured.
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +116,8 @@ func (w *FileWriter) flushLocked() error {
 			return err
 		}
 
-		file, err := os.OpenFile(w.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		// #nosec G304 -- output path is user-configured.
+		file, err := os.OpenFile(w.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 		if err != nil {
 			return err
 		}
@@ -228,7 +230,14 @@ func (m *MultiWriter) Close() error {
 // NullWriter discards all writes (for testing or when no output file is needed).
 type NullWriter struct{}
 
-func (n *NullWriter) Write(data string) error   { return nil }
-func (n *NullWriter) WriteLine(data string) error { return nil }
-func (n *NullWriter) Flush() error              { return nil }
-func (n *NullWriter) Close() error              { return nil }
+// Write discards data.
+func (n *NullWriter) Write(_ string) error { return nil }
+
+// WriteLine discards data with a newline.
+func (n *NullWriter) WriteLine(_ string) error { return nil }
+
+// Flush is a no-op.
+func (n *NullWriter) Flush() error { return nil }
+
+// Close is a no-op.
+func (n *NullWriter) Close() error { return nil }

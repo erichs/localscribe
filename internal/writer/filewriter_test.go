@@ -77,7 +77,7 @@ func TestFileWriterFlushOnSize(t *testing.T) {
 	path := filepath.Join(tmpDir, "test.txt")
 
 	w, err := NewWithOptions(path, Options{
-		FlushSize:     10, // Flush after 10 bytes
+		FlushSize:     10,        // Flush after 10 bytes
 		FlushInterval: time.Hour, // Don't flush on time
 	})
 	require.NoError(t, err)
@@ -160,9 +160,9 @@ func TestFileWriterReopenOnFlush(t *testing.T) {
 	path := filepath.Join(tmpDir, "test.txt")
 
 	w, err := NewWithOptions(path, Options{
-		FlushSize:       10,
-		FlushInterval:   time.Hour,
-		ReopenOnFlush:   true,
+		FlushSize:     10,
+		FlushInterval: time.Hour,
+		ReopenOnFlush: true,
 	})
 	require.NoError(t, err)
 
@@ -194,7 +194,7 @@ func TestFileWriterConcurrentWrites(t *testing.T) {
 	// Write from multiple goroutines
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
-		go func(n int) {
+		go func(_ int) {
 			for j := 0; j < 100; j++ {
 				w.Write("x")
 			}
@@ -258,7 +258,9 @@ func TestFileWriterInvalidPath(t *testing.T) {
 	// This is OS-specific but should fail on most systems
 	_, err := New("/nonexistent/root/path/that/cannot/be/created/test.txt")
 	// May or may not error depending on permissions, just ensure no panic
-	_ = err
+	if err != nil {
+		t.Logf("expected error: %v", err)
+	}
 }
 
 func TestFileWriterBytesWritten(t *testing.T) {

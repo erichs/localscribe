@@ -44,6 +44,7 @@ type Flags struct {
 	hasGoogleCredentialsFile bool
 }
 
+// Usage prints help for the record subcommand.
 func Usage(w io.Writer) {
 	fs, _ := newFlagSet()
 	fs.SetOutput(w)

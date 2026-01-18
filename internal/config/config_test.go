@@ -149,12 +149,12 @@ func TestConfigMergeWithFlags(t *testing.T) {
 	base := Default()
 
 	flags := &FlagOverrides{
-		ServerURL:  "ws://custom:8080",
-		OutputDir:  "/custom/output",
-		Gain:       5.0,
-		Debug:      true,
-		HasGain:    true,
-		HasDebug:   true,
+		ServerURL: "ws://custom:8080",
+		OutputDir: "/custom/output",
+		Gain:      5.0,
+		Debug:     true,
+		HasGain:   true,
+		HasDebug:  true,
 	}
 
 	merged := base.MergeFlags(flags)

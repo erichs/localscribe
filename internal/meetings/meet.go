@@ -12,6 +12,7 @@ import (
 // MeetState represents the current state of Google Meet.
 type MeetState int
 
+// MeetState values describe meeting activity.
 const (
 	MeetNotInMeeting MeetState = iota
 	MeetInMeeting
@@ -74,8 +75,14 @@ func (d *MeetDetector) Start(ctx context.Context) error {
 		}
 	}
 
-	cmd.Wait()
-	return scanner.Err()
+	waitErr := cmd.Wait()
+	if scanErr := scanner.Err(); scanErr != nil {
+		return scanErr
+	}
+	if waitErr != nil && ctx.Err() == nil {
+		return fmt.Errorf("lsof exited: %w", waitErr)
+	}
+	return nil
 }
 
 // determineState determines the current Meet state based on lsof output.

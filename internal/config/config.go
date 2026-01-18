@@ -72,6 +72,7 @@ type PluginConfig struct {
 // TriggerType defines when a plugin should execute.
 type TriggerType string
 
+// Trigger* values define plugin execution points.
 const (
 	TriggerOnStart        TriggerType = "on_start"
 	TriggerOnMeetingStart TriggerType = "on_meeting_start"
@@ -136,16 +137,16 @@ type FlagOverrides struct {
 	GoogleCredentialsFile string
 
 	// Has* fields indicate whether the flag was explicitly set
-	HasGain                   bool
-	HasDeviceIndex            bool
-	HasVADPause               bool
-	HasPauseThreshold         bool
-	HasDebug                  bool
-	HasHeartbeatInterval      bool
-	HasZoomDetection          bool
-	HasMeetDetection          bool
-	HasCalendarIntegration    bool
-	HasGoogleCredentialsFile  bool
+	HasGain                  bool
+	HasDeviceIndex           bool
+	HasVADPause              bool
+	HasPauseThreshold        bool
+	HasDebug                 bool
+	HasHeartbeatInterval     bool
+	HasZoomDetection         bool
+	HasMeetDetection         bool
+	HasCalendarIntegration   bool
+	HasGoogleCredentialsFile bool
 }
 
 // Default returns a Config with default values.
@@ -176,6 +177,7 @@ func Default() *Config {
 func Load(path string) (*Config, error) {
 	cfg := Default()
 
+	// #nosec G304 -- config path is user-supplied by design.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -228,7 +230,7 @@ func FindConfigFile(explicitPath string) string {
 // Empty string values in flags are not considered overrides.
 // Boolean and numeric flags use Has* fields to determine if they were set.
 func (c *Config) MergeFlags(flags *FlagOverrides) *Config {
-	merged := *c // Copy the config
+	merged := *c                 // Copy the config
 	merged.Metadata = c.Metadata // Ensure nested struct is copied
 
 	if flags.ServerURL != "" {
