@@ -289,7 +289,7 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 
 			// Write initial timestamp
 			ts := time.Now().Format("2006/01/02 15:04:05 MST")
-			multiWriter.WriteMetadata(fmt.Sprintf("%% time: %s\n", ts))
+			multiWriter.WriteMetadata(fmt.Sprintf("%%%% time: %s\n", ts))
 
 			for {
 				select {
@@ -297,7 +297,7 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 					return
 				case t := <-ticker.C:
 					ts := t.Format("2006/01/02 15:04:05 MST")
-					multiWriter.WriteMetadata(fmt.Sprintf("%% time: %s\n", ts))
+					multiWriter.WriteMetadata(fmt.Sprintf("%%%% time: %s\n", ts))
 				}
 			}
 		}()
@@ -316,16 +316,16 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 				switch info.Type {
 				case meetings.MeetingTypeZoom:
 					if cfg.Metadata.ZoomDetection {
-						multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s zoom\n", ts))
+						multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s zoom\n", ts))
 					}
 				case meetings.MeetingTypeMeet:
 					if cfg.Metadata.MeetDetection {
 						if info.Title != "" {
-							multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s meet/%s\n%% meeting title: %s\n", ts, info.Code, info.Title))
+							multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet/%s\n%%%% meeting title: %s\n", ts, info.Code, info.Title))
 						} else if info.Code != "" {
-							multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s meet/%s\n", ts, info.Code))
+							multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet/%s\n", ts, info.Code))
 						} else {
-							multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s meet\n", ts))
+							multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting started: %s meet\n", ts))
 						}
 					}
 				}
@@ -337,11 +337,11 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 				switch meetingType {
 				case meetings.MeetingTypeZoom:
 					if cfg.Metadata.ZoomDetection {
-						multiWriter.WriteMetadata(fmt.Sprintf("%% meeting ended: %s zoom (duration: %dm)\n", ts, mins))
+						multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting ended: %s zoom (duration: %dm)\n", ts, mins))
 					}
 				case meetings.MeetingTypeMeet:
 					if cfg.Metadata.MeetDetection {
-						multiWriter.WriteMetadata(fmt.Sprintf("%% meeting ended: %s meet (duration: %dm)\n", ts, mins))
+						multiWriter.WriteMetadata(fmt.Sprintf("%%%% meeting ended: %s meet (duration: %dm)\n", ts, mins))
 					}
 				}
 			},

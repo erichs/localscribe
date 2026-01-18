@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -316,4 +318,67 @@ func TestFlagsWithoutExplicitSet(t *testing.T) {
 	o := f.ToOverrides()
 	assert.False(t, o.HasGain)
 	assert.False(t, o.HasDeviceIndex)
+}
+
+func TestMetadataFormatPrefix(t *testing.T) {
+	// These tests verify that the format strings used for metadata produce
+	// output with "%%" prefix (required by lastscribed parser).
+	// In Go's fmt.Sprintf, "%%%%" produces "%%".
+
+	ts := "2026/01/17 23:04:29 EST"
+
+	t.Run("heartbeat format", func(t *testing.T) {
+		heartbeat := fmt.Sprintf("%%%% time: %s\n", ts)
+		assert.True(t, strings.HasPrefix(heartbeat, "%% time:"),
+			"heartbeat should start with '%%', got: %s", heartbeat)
+		assert.Equal(t, "%% time: 2026/01/17 23:04:29 EST\n", heartbeat)
+	})
+
+	t.Run("zoom meeting start format", func(t *testing.T) {
+		meetingStart := fmt.Sprintf("%%%% meeting started: %s zoom\n", ts)
+		assert.True(t, strings.HasPrefix(meetingStart, "%% meeting started:"),
+			"meeting start should start with '%%', got: %s", meetingStart)
+		assert.Equal(t, "%% meeting started: 2026/01/17 23:04:29 EST zoom\n", meetingStart)
+	})
+
+	t.Run("meet meeting start with title format", func(t *testing.T) {
+		code := "abc-defg-hij"
+		title := "Weekly Standup"
+		meetingStart := fmt.Sprintf("%%%% meeting started: %s meet/%s\n%%%% meeting title: %s\n", ts, code, title)
+		assert.True(t, strings.HasPrefix(meetingStart, "%% meeting started:"),
+			"meeting start should start with '%%', got: %s", meetingStart)
+		assert.Contains(t, meetingStart, "%% meeting title:")
+		assert.Equal(t, "%% meeting started: 2026/01/17 23:04:29 EST meet/abc-defg-hij\n%% meeting title: Weekly Standup\n", meetingStart)
+	})
+
+	t.Run("meet meeting start with code format", func(t *testing.T) {
+		code := "abc-defg-hij"
+		meetingStart := fmt.Sprintf("%%%% meeting started: %s meet/%s\n", ts, code)
+		assert.True(t, strings.HasPrefix(meetingStart, "%% meeting started:"),
+			"meeting start should start with '%%', got: %s", meetingStart)
+		assert.Equal(t, "%% meeting started: 2026/01/17 23:04:29 EST meet/abc-defg-hij\n", meetingStart)
+	})
+
+	t.Run("meet meeting start basic format", func(t *testing.T) {
+		meetingStart := fmt.Sprintf("%%%% meeting started: %s meet\n", ts)
+		assert.True(t, strings.HasPrefix(meetingStart, "%% meeting started:"),
+			"meeting start should start with '%%', got: %s", meetingStart)
+		assert.Equal(t, "%% meeting started: 2026/01/17 23:04:29 EST meet\n", meetingStart)
+	})
+
+	t.Run("zoom meeting end format", func(t *testing.T) {
+		mins := 45
+		meetingEnd := fmt.Sprintf("%%%% meeting ended: %s zoom (duration: %dm)\n", ts, mins)
+		assert.True(t, strings.HasPrefix(meetingEnd, "%% meeting ended:"),
+			"meeting end should start with '%%', got: %s", meetingEnd)
+		assert.Equal(t, "%% meeting ended: 2026/01/17 23:04:29 EST zoom (duration: 45m)\n", meetingEnd)
+	})
+
+	t.Run("meet meeting end format", func(t *testing.T) {
+		mins := 30
+		meetingEnd := fmt.Sprintf("%%%% meeting ended: %s meet (duration: %dm)\n", ts, mins)
+		assert.True(t, strings.HasPrefix(meetingEnd, "%% meeting ended:"),
+			"meeting end should start with '%%', got: %s", meetingEnd)
+		assert.Equal(t, "%% meeting ended: 2026/01/17 23:04:29 EST meet (duration: 30m)\n", meetingEnd)
+	})
 }
