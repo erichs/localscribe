@@ -249,26 +249,26 @@ func (r *Runner) executePlugin(ctx context.Context, plugin config.PluginConfig, 
 // buildEnv builds environment variables for a plugin execution.
 func (r *Runner) buildEnv(trigger config.TriggerType, execCtx *ExecuteContext) []string {
 	env := []string{
-		fmt.Sprintf("LOCALDSMC_EVENT=%s", trigger),
-		fmt.Sprintf("LOCALDSMC_TIMESTAMP=%s", time.Now().Format(time.RFC3339)),
+		fmt.Sprintf("LOCALSCRIBE_EVENT=%s", trigger),
+		fmt.Sprintf("LOCALSCRIBE_TIMESTAMP=%s", time.Now().Format(time.RFC3339)),
 	}
 
 	if execCtx != nil {
 		if execCtx.OutputFile != "" {
-			env = append(env, fmt.Sprintf("LOCALDSMC_OUTPUT_FILE=%s", execCtx.OutputFile))
+			env = append(env, fmt.Sprintf("LOCALSCRIBE_OUTPUT_FILE=%s", execCtx.OutputFile))
 		}
 
 		// Meeting-specific variables
 		if trigger == config.TriggerOnMeetingStart || trigger == config.TriggerOnMeetingEnd {
-			env = append(env, fmt.Sprintf("LOCALDSMC_MEETING_TYPE=%s", execCtx.MeetingType.String()))
+			env = append(env, fmt.Sprintf("LOCALSCRIBE_MEETING_TYPE=%s", execCtx.MeetingType.String()))
 			if execCtx.MeetingCode != "" {
-				env = append(env, fmt.Sprintf("LOCALDSMC_MEETING_CODE=%s", execCtx.MeetingCode))
+				env = append(env, fmt.Sprintf("LOCALSCRIBE_MEETING_CODE=%s", execCtx.MeetingCode))
 			}
 			if execCtx.MeetingTitle != "" {
-				env = append(env, fmt.Sprintf("LOCALDSMC_MEETING_TITLE=%s", execCtx.MeetingTitle))
+				env = append(env, fmt.Sprintf("LOCALSCRIBE_MEETING_TITLE=%s", execCtx.MeetingTitle))
 			}
 			if trigger == config.TriggerOnMeetingEnd {
-				env = append(env, fmt.Sprintf("LOCALDSMC_MEETING_DURATION=%d", int(execCtx.MeetingDuration.Seconds())))
+				env = append(env, fmt.Sprintf("LOCALSCRIBE_MEETING_DURATION=%d", int(execCtx.MeetingDuration.Seconds())))
 			}
 		}
 	}

@@ -214,7 +214,7 @@ func TestRunner_Execute_EnvironmentVariables(t *testing.T) {
 	plugins := []config.PluginConfig{
 		{
 			Name:    "env-test",
-			Command: "echo $LOCALDSMC_EVENT",
+			Command: "echo $LOCALSCRIBE_EVENT",
 			Trigger: config.TriggerOnMeetingStart,
 		},
 	}
@@ -237,7 +237,7 @@ func TestRunner_Execute_EnvironmentVariables(t *testing.T) {
 	}
 
 	if !strings.Contains(metadata[0], "on_meeting_start") {
-		t.Errorf("expected LOCALDSMC_EVENT in output, got: %s", metadata[0])
+		t.Errorf("expected LOCALSCRIBE_EVENT in output, got: %s", metadata[0])
 	}
 }
 

@@ -48,15 +48,15 @@ metadata:
   #   %% plugin-name: <line>
   #
   # Environment variables passed to plugins:
-  #   LOCALDSMC_EVENT         - on_start, on_meeting_start, on_meeting_end, periodic
-  #   LOCALDSMC_OUTPUT_FILE   - path to current transcript file
-  #   LOCALDSMC_TIMESTAMP     - current timestamp (RFC3339 format)
+  #   LOCALSCRIBE_EVENT         - on_start, on_meeting_start, on_meeting_end, periodic
+  #   LOCALSCRIBE_OUTPUT_FILE   - path to current transcript file
+  #   LOCALSCRIBE_TIMESTAMP     - current timestamp (RFC3339 format)
   #
   # Meeting events also include:
-  #   LOCALDSMC_MEETING_TYPE  - zoom or meet
-  #   LOCALDSMC_MEETING_CODE  - meeting code (e.g., "abc-defg-hij" for Meet)
-  #   LOCALDSMC_MEETING_TITLE - meeting title (if available)
-  #   LOCALDSMC_MEETING_DURATION - duration in seconds (on_meeting_end only)
+  #   LOCALSCRIBE_MEETING_TYPE  - zoom or meet
+  #   LOCALSCRIBE_MEETING_CODE  - meeting code (e.g., "abc-defg-hij" for Meet)
+  #   LOCALSCRIBE_MEETING_TITLE - meeting title (if available)
+  #   LOCALSCRIBE_MEETING_DURATION - duration in seconds (on_meeting_end only)
   #
   # Plugins run in parallel and cannot depend on each other.
   # Errors are logged to stderr but don't stop transcription.

@@ -127,7 +127,7 @@ func TestParseLogLineWithHeartbeat(t *testing.T) {
 
 func TestReadAndParseAllNewFormat(t *testing.T) {
 	// Create a temporary directory with test transcript files
-	tmpDir, err := os.MkdirTemp("", "lastscribed_test")
+	tmpDir, err := os.MkdirTemp("", "localscribe last_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestMetadataLinePrefix(t *testing.T) {
 }
 
 func TestReadAndParseAllSkipsCorruptedFiles(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "lastscribed_test")
+	tmpDir, err := os.MkdirTemp("", "localscribe last_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestReadAndParseAllSkipsCorruptedFiles(t *testing.T) {
 }
 
 func TestScannerWithLargeBuffer(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "lastscribed_test")
+	tmpDir, err := os.MkdirTemp("", "localscribe last_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

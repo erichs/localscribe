@@ -322,7 +322,7 @@ func TestFlagsWithoutExplicitSet(t *testing.T) {
 
 func TestMetadataFormatPrefix(t *testing.T) {
 	// These tests verify that the format strings used for metadata produce
-	// output with "%%" prefix (required by lastscribed parser).
+	// output with "%%" prefix (required by localscribe last parser).
 	// In Go's fmt.Sprintf, "%%%%" produces "%%".
 
 	ts := "2026/01/17 23:04:29 EST"
