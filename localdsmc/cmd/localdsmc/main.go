@@ -2,17 +2,20 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"localdsmc/internal/audio"
 	"localdsmc/internal/client"
 	"localdsmc/internal/config"
+	"localdsmc/internal/meetings"
 	"localdsmc/internal/processor"
 	"localdsmc/internal/writer"
 )
@@ -83,12 +86,24 @@ type Flags struct {
 	ListDevices      bool
 	ShowVersion      bool
 
+	// Metadata flags
+	HeartbeatInterval     int
+	ZoomDetection         bool
+	MeetDetection         bool
+	CalendarIntegration   bool
+	GoogleCredentialsFile string
+
 	// Track which flags were explicitly set
-	hasGain           bool
-	hasDeviceIndex    bool
-	hasVADPause       bool
-	hasPauseThreshold bool
-	hasDebug          bool
+	hasGain                   bool
+	hasDeviceIndex            bool
+	hasVADPause               bool
+	hasPauseThreshold         bool
+	hasDebug                  bool
+	hasHeartbeatInterval      bool
+	hasZoomDetection          bool
+	hasMeetDetection          bool
+	hasCalendarIntegration    bool
+	hasGoogleCredentialsFile  bool
 }
 
 func parseFlags(args []string) (*Flags, error) {
@@ -129,6 +144,13 @@ func parseFlags(args []string) (*Flags, error) {
 	fs.BoolVar(&f.ShowVersion, "version", false, "Show version")
 	fs.BoolVar(&f.ShowVersion, "v", false, "Show version (shorthand)")
 
+	// Metadata flags
+	fs.IntVar(&f.HeartbeatInterval, "heartbeat", 60, "Heartbeat timestamp interval in seconds (0 to disable)")
+	fs.BoolVar(&f.ZoomDetection, "zoom", false, "Enable Zoom meeting detection")
+	fs.BoolVar(&f.MeetDetection, "meet", false, "Enable Google Meet detection")
+	fs.BoolVar(&f.CalendarIntegration, "calendar", false, "Enable Google Calendar integration")
+	fs.StringVar(&f.GoogleCredentialsFile, "google-creds", "", "Path to Google OAuth credentials file")
+
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -146,6 +168,16 @@ func parseFlags(args []string) (*Flags, error) {
 			f.hasPauseThreshold = true
 		case "debug":
 			f.hasDebug = true
+		case "heartbeat":
+			f.hasHeartbeatInterval = true
+		case "zoom":
+			f.hasZoomDetection = true
+		case "meet":
+			f.hasMeetDetection = true
+		case "calendar":
+			f.hasCalendarIntegration = true
+		case "google-creds":
+			f.hasGoogleCredentialsFile = true
 		}
 	})
 
@@ -155,21 +187,31 @@ func parseFlags(args []string) (*Flags, error) {
 // ToOverrides converts flags to config overrides.
 func (f *Flags) ToOverrides() *config.FlagOverrides {
 	return &config.FlagOverrides{
-		ServerURL:         f.ServerURL,
-		APIKey:            f.APIKey,
-		OutputDir:         f.OutputDir,
-		FilenameTemplate:  f.FilenameTemplate,
-		OutputFile:        f.OutputFile,
-		Gain:              f.Gain,
-		DeviceIndex:       f.DeviceIndex,
-		VADPause:          f.VADPause,
-		PauseThreshold:    f.PauseThreshold,
-		Debug:             f.Debug,
-		HasGain:           f.hasGain,
-		HasDeviceIndex:    f.hasDeviceIndex,
-		HasVADPause:       f.hasVADPause,
-		HasPauseThreshold: f.hasPauseThreshold,
-		HasDebug:          f.hasDebug,
+		ServerURL:                f.ServerURL,
+		APIKey:                   f.APIKey,
+		OutputDir:                f.OutputDir,
+		FilenameTemplate:         f.FilenameTemplate,
+		OutputFile:               f.OutputFile,
+		Gain:                     f.Gain,
+		DeviceIndex:              f.DeviceIndex,
+		VADPause:                 f.VADPause,
+		PauseThreshold:           f.PauseThreshold,
+		Debug:                    f.Debug,
+		HeartbeatInterval:        f.HeartbeatInterval,
+		ZoomDetection:            f.ZoomDetection,
+		MeetDetection:            f.MeetDetection,
+		CalendarIntegration:      f.CalendarIntegration,
+		GoogleCredentialsFile:    f.GoogleCredentialsFile,
+		HasGain:                  f.hasGain,
+		HasDeviceIndex:           f.hasDeviceIndex,
+		HasVADPause:              f.hasVADPause,
+		HasPauseThreshold:        f.hasPauseThreshold,
+		HasDebug:                 f.hasDebug,
+		HasHeartbeatInterval:     f.hasHeartbeatInterval,
+		HasZoomDetection:         f.hasZoomDetection,
+		HasMeetDetection:         f.hasMeetDetection,
+		HasCalendarIntegration:   f.hasCalendarIntegration,
+		HasGoogleCredentialsFile: f.hasGoogleCredentialsFile,
 	}
 }
 
@@ -192,6 +234,14 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Set up signal handling for pause/resume (Ctrl+Z)
+	pauseChan := make(chan os.Signal, 1)
+	signal.Notify(pauseChan, syscall.SIGTSTP)
+
+	// Pause state
+	var pauseMu sync.Mutex
+	paused := false
 
 	// Determine output file path
 	outputPath := cfg.GetOutputPath(time.Now())
@@ -228,7 +278,81 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 	defer wsClient.Close()
 
 	fmt.Fprintf(stderr, "Connected. Transcribing to: %s\n", outputPath)
-	fmt.Fprintf(stderr, "Press Ctrl+C to stop.\n\n")
+	fmt.Fprintf(stderr, "Press Ctrl+Z to pause/resume, Ctrl+C to stop.\n\n")
+
+	// Start heartbeat timestamp goroutine if enabled
+	heartbeatDone := make(chan struct{})
+	if cfg.Metadata.HeartbeatInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(cfg.Metadata.HeartbeatInterval) * time.Second)
+			defer ticker.Stop()
+
+			// Write initial timestamp
+			ts := time.Now().Format("2006/01/02 15:04:05 MST")
+			multiWriter.WriteMetadata(fmt.Sprintf("%% time: %s\n", ts))
+
+			for {
+				select {
+				case <-heartbeatDone:
+					return
+				case t := <-ticker.C:
+					ts := t.Format("2006/01/02 15:04:05 MST")
+					multiWriter.WriteMetadata(fmt.Sprintf("%% time: %s\n", ts))
+				}
+			}
+		}()
+	}
+
+	// Start combined meeting detection if Zoom or Meet detection is enabled
+	var meetingDetectorCancel context.CancelFunc
+	if cfg.Metadata.ZoomDetection || cfg.Metadata.MeetDetection {
+		var meetingCtx context.Context
+		meetingCtx, meetingDetectorCancel = context.WithCancel(context.Background())
+
+		detector := meetings.NewDetector(
+			func(info meetings.MeetingInfo) {
+				// Meeting started
+				ts := info.StartTime.Format("2006/01/02 15:04:05 MST")
+				switch info.Type {
+				case meetings.MeetingTypeZoom:
+					if cfg.Metadata.ZoomDetection {
+						multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s zoom\n", ts))
+					}
+				case meetings.MeetingTypeMeet:
+					if cfg.Metadata.MeetDetection {
+						if info.Title != "" {
+							multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s meet/%s\n%% meeting title: %s\n", ts, info.Code, info.Title))
+						} else if info.Code != "" {
+							multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s meet/%s\n", ts, info.Code))
+						} else {
+							multiWriter.WriteMetadata(fmt.Sprintf("%% meeting started: %s meet\n", ts))
+						}
+					}
+				}
+			},
+			func(meetingType meetings.MeetingType, duration time.Duration) {
+				// Meeting ended
+				ts := time.Now().Format("2006/01/02 15:04:05 MST")
+				mins := meetings.RoundToNearestMinute(duration)
+				switch meetingType {
+				case meetings.MeetingTypeZoom:
+					if cfg.Metadata.ZoomDetection {
+						multiWriter.WriteMetadata(fmt.Sprintf("%% meeting ended: %s zoom (duration: %dm)\n", ts, mins))
+					}
+				case meetings.MeetingTypeMeet:
+					if cfg.Metadata.MeetDetection {
+						multiWriter.WriteMetadata(fmt.Sprintf("%% meeting ended: %s meet (duration: %dm)\n", ts, mins))
+					}
+				}
+			},
+		)
+
+		go func() {
+			if err := detector.Start(meetingCtx); err != nil && cfg.Debug {
+				fmt.Fprintf(stderr, "[DEBUG] Meeting detection error: %v\n", err)
+			}
+		}()
+	}
 
 	// Start audio capture
 	if err := capture.Start(); err != nil {
@@ -237,73 +361,170 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 
 	// Create channels for coordination
 	done := make(chan struct{})
-	errChan := make(chan error, 2)
 
-	// Goroutine to send audio to server
+	// Reconnecting state
+	var reconnectMu sync.Mutex
+	reconnecting := false
+
+	// Helper to check if paused or reconnecting
+	shouldSkip := func() bool {
+		pauseMu.Lock()
+		p := paused
+		pauseMu.Unlock()
+		reconnectMu.Lock()
+		r := reconnecting
+		reconnectMu.Unlock()
+		return p || r
+	}
+
+	// Goroutine to handle pause/resume signal (Ctrl+Z)
 	go func() {
 		for {
 			select {
 			case <-done:
 				return
-			case chunk, ok := <-capture.Chunks():
-				if !ok {
-					return
+			case <-pauseChan:
+				pauseMu.Lock()
+				paused = !paused
+				if paused {
+					fmt.Fprintf(stderr, "\n[PAUSED] Press Ctrl+Z to resume\n")
+				} else {
+					fmt.Fprintf(stderr, "[RESUMED]\n")
 				}
-				if err := wsClient.SendAudio(chunk); err != nil {
-					errChan <- fmt.Errorf("send error: %w", err)
-					return
-				}
+				pauseMu.Unlock()
 			}
 		}
 	}()
 
-	// Goroutine to receive transcripts from server
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				msg, err := wsClient.Receive()
-				if err != nil {
-					if !wsClient.IsClosed() {
-						errChan <- fmt.Errorf("receive error: %w", err)
-					}
+	// Start send/receive goroutines
+	startWorkers := func() (chan struct{}, chan error) {
+		workerDone := make(chan struct{})
+		workerErr := make(chan error, 2)
+
+		// Goroutine to send audio to server
+		go func() {
+			for {
+				select {
+				case <-workerDone:
 					return
+				case <-done:
+					return
+				case chunk, ok := <-capture.Chunks():
+					if !ok {
+						return
+					}
+					// Skip sending when paused or reconnecting
+					if shouldSkip() {
+						continue
+					}
+					if err := wsClient.SendAudio(chunk); err != nil {
+						if !wsClient.IsClosed() {
+							workerErr <- fmt.Errorf("send error: %w", err)
+						}
+						return
+					}
 				}
+			}
+		}()
 
-				switch m := msg.(type) {
-				case *client.WordMessage:
-					output := postProc.ProcessWord(m.Text)
-					if output != "" {
-						multiWriter.Write(output)
+		// Goroutine to receive transcripts from server
+		go func() {
+			for {
+				select {
+				case <-workerDone:
+					return
+				case <-done:
+					return
+				default:
+					msg, err := wsClient.Receive()
+					if err != nil {
+						if !wsClient.IsClosed() {
+							workerErr <- fmt.Errorf("receive error: %w", err)
+						}
+						return
 					}
 
-				case *client.StepMessage:
-					if m.IsEndOfTurn() {
-						if cfg.Debug {
-							fmt.Fprintf(stderr, "[DEBUG] End of turn detected\n")
-						}
-						output := postProc.ProcessEndOfTurn()
+					switch m := msg.(type) {
+					case *client.WordMessage:
+						output := postProc.ProcessWord(m.Text)
 						if output != "" {
 							multiWriter.Write(output)
 						}
+
+					case *client.StepMessage:
+						if m.IsEndOfTurn() {
+							if cfg.Debug {
+								fmt.Fprintf(stderr, "[DEBUG] End of turn detected\n")
+							}
+							output := postProc.ProcessEndOfTurn()
+							if output != "" {
+								multiWriter.Write(output)
+							}
+						}
 					}
 				}
 			}
-		}
-	}()
+		}()
 
-	// Wait for signal or error
-	select {
-	case <-sigChan:
-		fmt.Fprintf(stderr, "\nStopping...\n")
-	case err := <-errChan:
-		fmt.Fprintf(stderr, "\nError: %v\n", err)
+		return workerDone, workerErr
 	}
 
+	workerDone, workerErr := startWorkers()
+
+	// Main loop with reconnection handling
+	for {
+		select {
+		case <-sigChan:
+			fmt.Fprintf(stderr, "\nStopping...\n")
+			goto shutdown
+
+		case err := <-workerErr:
+			fmt.Fprintf(stderr, "\nConnection error: %v\n", err)
+
+			// Set reconnecting state
+			reconnectMu.Lock()
+			reconnecting = true
+			reconnectMu.Unlock()
+
+			// Stop current workers
+			close(workerDone)
+
+			// Attempt reconnection
+			fmt.Fprintf(stderr, "Attempting to reconnect...\n")
+			reconnectErr := wsClient.Reconnect(0, func(attempt int, delay time.Duration) {
+				fmt.Fprintf(stderr, "  Reconnection attempt %d (waiting %v)...\n", attempt, delay)
+			})
+
+			if reconnectErr != nil {
+				fmt.Fprintf(stderr, "Reconnection failed: %v\n", reconnectErr)
+				goto shutdown
+			}
+
+			fmt.Fprintf(stderr, "Reconnected successfully.\n")
+
+			// Clear reconnecting state and restart workers
+			reconnectMu.Lock()
+			reconnecting = false
+			reconnectMu.Unlock()
+
+			workerDone, workerErr = startWorkers()
+		}
+	}
+
+shutdown:
 	// Clean shutdown
 	close(done)
+	close(heartbeatDone)
+	if meetingDetectorCancel != nil {
+		meetingDetectorCancel()
+	}
+	// Close workerDone safely (it might already be closed during reconnection)
+	select {
+	case <-workerDone:
+		// Already closed
+	default:
+		close(workerDone)
+	}
 	capture.Stop()
 	wsClient.Close()
 

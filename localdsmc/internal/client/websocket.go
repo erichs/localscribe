@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/vmihailenco/msgpack/v5"
@@ -16,9 +17,11 @@ const (
 
 // Client handles WebSocket communication with moshi-server.
 type Client struct {
-	conn   *websocket.Conn
-	mu     sync.Mutex
-	closed bool
+	conn      *websocket.Conn
+	serverURL string
+	apiKey    string
+	mu        sync.Mutex
+	closed    bool
 }
 
 // Connect establishes a WebSocket connection to the moshi-server.
@@ -34,9 +37,61 @@ func Connect(serverURL, apiKey string) (*Client, error) {
 	}
 
 	return &Client{
-		conn:   conn,
-		closed: false,
+		conn:      conn,
+		serverURL: serverURL,
+		apiKey:    apiKey,
+		closed:    false,
 	}, nil
+}
+
+// Reconnect attempts to reconnect with exponential backoff.
+// Returns nil on successful reconnection, error if all attempts fail or context is cancelled.
+// maxAttempts of 0 means unlimited attempts.
+func (c *Client) Reconnect(maxAttempts int, onAttempt func(attempt int, delay time.Duration)) error {
+	c.mu.Lock()
+	// Close existing connection if any
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+	c.closed = false
+	c.mu.Unlock()
+
+	delay := time.Second
+	maxDelay := 60 * time.Second
+	attempt := 0
+
+	for {
+		attempt++
+		if maxAttempts > 0 && attempt > maxAttempts {
+			return websocket.ErrCloseSent
+		}
+
+		if onAttempt != nil {
+			onAttempt(attempt, delay)
+		}
+
+		time.Sleep(delay)
+
+		url := buildURL(c.serverURL)
+		header := make(http.Header)
+		header.Set("kyutai-api-key", c.apiKey)
+
+		conn, _, err := websocket.DefaultDialer.Dial(url, header)
+		if err == nil {
+			c.mu.Lock()
+			c.conn = conn
+			c.closed = false
+			c.mu.Unlock()
+			return nil
+		}
+
+		// Exponential backoff
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
 }
 
 // buildURL ensures the URL has the correct ASR endpoint path.

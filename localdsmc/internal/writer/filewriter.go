@@ -159,16 +159,18 @@ type Writer interface {
 
 // MultiWriter writes to multiple destinations simultaneously.
 type MultiWriter struct {
-	file   *FileWriter
-	stdout io.Writer
-	mu     sync.Mutex
+	file            *FileWriter
+	stdout          io.Writer
+	mu              sync.Mutex
+	endsWithNewline bool // tracks if last write ended with newline
 }
 
 // NewMultiWriter creates a writer that writes to both a file and stdout.
 func NewMultiWriter(file *FileWriter, stdout io.Writer) *MultiWriter {
 	return &MultiWriter{
-		file:   file,
-		stdout: stdout,
+		file:            file,
+		stdout:          stdout,
+		endsWithNewline: true, // start fresh, so first write doesn't get spurious newline
 	}
 }
 
@@ -182,6 +184,11 @@ func (m *MultiWriter) Write(data string) error {
 		_, _ = m.stdout.Write([]byte(data))
 	}
 
+	// Track newline state
+	if len(data) > 0 {
+		m.endsWithNewline = data[len(data)-1] == '\n'
+	}
+
 	// Write to file
 	return m.file.Write(data)
 }
@@ -189,6 +196,19 @@ func (m *MultiWriter) Write(data string) error {
 // WriteLine writes a line to both file and stdout.
 func (m *MultiWriter) WriteLine(data string) error {
 	return m.Write(data + "\n")
+}
+
+// WriteMetadata writes metadata ensuring it starts on a fresh line.
+// If the last write didn't end with a newline, a newline is prepended.
+func (m *MultiWriter) WriteMetadata(data string) error {
+	m.mu.Lock()
+	needsNewline := !m.endsWithNewline
+	m.mu.Unlock()
+
+	if needsNewline {
+		return m.Write("\n" + data)
+	}
+	return m.Write(data)
 }
 
 // Flush flushes the file writer.

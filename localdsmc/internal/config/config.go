@@ -22,6 +22,28 @@ type Config struct {
 	VADPause         bool    `yaml:"vad_pause"`
 	PauseThreshold   float64 `yaml:"pause_threshold"`
 	Debug            bool    `yaml:"debug"`
+
+	// Metadata features
+	Metadata MetadataConfig `yaml:"metadata"`
+}
+
+// MetadataConfig holds configuration for metadata collection features.
+type MetadataConfig struct {
+	// HeartbeatInterval is how often to write timestamp markers (in seconds).
+	// Set to 0 to disable heartbeat timestamps.
+	HeartbeatInterval int `yaml:"heartbeat_interval"`
+
+	// ZoomDetection enables automatic Zoom meeting detection.
+	ZoomDetection bool `yaml:"zoom_detection"`
+
+	// MeetDetection enables automatic Google Meet detection.
+	MeetDetection bool `yaml:"meet_detection"`
+
+	// CalendarIntegration enables Google Calendar API for meeting metadata.
+	CalendarIntegration bool `yaml:"calendar_integration"`
+
+	// GoogleCredentialsFile is the path to Google OAuth credentials.
+	GoogleCredentialsFile string `yaml:"google_credentials_file"`
 }
 
 // FlagOverrides contains CLI flag values that override config file settings.
@@ -39,12 +61,24 @@ type FlagOverrides struct {
 	Debug            bool
 	OutputFile       string // Direct output file path (overrides template)
 
+	// Metadata flags
+	HeartbeatInterval     int
+	ZoomDetection         bool
+	MeetDetection         bool
+	CalendarIntegration   bool
+	GoogleCredentialsFile string
+
 	// Has* fields indicate whether the flag was explicitly set
-	HasGain           bool
-	HasDeviceIndex    bool
-	HasVADPause       bool
-	HasPauseThreshold bool
-	HasDebug          bool
+	HasGain                   bool
+	HasDeviceIndex            bool
+	HasVADPause               bool
+	HasPauseThreshold         bool
+	HasDebug                  bool
+	HasHeartbeatInterval      bool
+	HasZoomDetection          bool
+	HasMeetDetection          bool
+	HasCalendarIntegration    bool
+	HasGoogleCredentialsFile  bool
 }
 
 // Default returns a Config with default values.
@@ -59,6 +93,13 @@ func Default() *Config {
 		VADPause:         false,
 		PauseThreshold:   2.0,
 		Debug:            false,
+		Metadata: MetadataConfig{
+			HeartbeatInterval:     60, // 1 minute default
+			ZoomDetection:         false,
+			MeetDetection:         false,
+			CalendarIntegration:   false,
+			GoogleCredentialsFile: "",
+		},
 	}
 }
 
@@ -121,6 +162,7 @@ func FindConfigFile(explicitPath string) string {
 // Boolean and numeric flags use Has* fields to determine if they were set.
 func (c *Config) MergeFlags(flags *FlagOverrides) *Config {
 	merged := *c // Copy the config
+	merged.Metadata = c.Metadata // Ensure nested struct is copied
 
 	if flags.ServerURL != "" {
 		merged.ServerURL = flags.ServerURL
@@ -148,6 +190,23 @@ func (c *Config) MergeFlags(flags *FlagOverrides) *Config {
 	}
 	if flags.HasDebug {
 		merged.Debug = flags.Debug
+	}
+
+	// Metadata flags
+	if flags.HasHeartbeatInterval {
+		merged.Metadata.HeartbeatInterval = flags.HeartbeatInterval
+	}
+	if flags.HasZoomDetection {
+		merged.Metadata.ZoomDetection = flags.ZoomDetection
+	}
+	if flags.HasMeetDetection {
+		merged.Metadata.MeetDetection = flags.MeetDetection
+	}
+	if flags.HasCalendarIntegration {
+		merged.Metadata.CalendarIntegration = flags.CalendarIntegration
+	}
+	if flags.HasGoogleCredentialsFile || flags.GoogleCredentialsFile != "" {
+		merged.Metadata.GoogleCredentialsFile = flags.GoogleCredentialsFile
 	}
 
 	return &merged
