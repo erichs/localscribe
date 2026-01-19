@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"localscribe/internal/config"
 )
@@ -18,8 +19,8 @@ type Flags struct {
 	OutputFile       string
 	Gain             float64
 	DeviceIndex      int
-	VADPause         bool
 	PauseThreshold   float64
+	DeadAirReset     time.Duration
 	Debug            bool
 	ListDevices      bool
 	ShowVersion      bool
@@ -34,8 +35,8 @@ type Flags struct {
 	// Track which flags were explicitly set
 	hasGain                  bool
 	hasDeviceIndex           bool
-	hasVADPause              bool
 	hasPauseThreshold        bool
+	hasDeadAirReset          bool
 	hasDebug                 bool
 	hasHeartbeatInterval     bool
 	hasZoomDetection         bool
@@ -66,10 +67,10 @@ func parseFlags(args []string) (*Flags, error) {
 			f.hasGain = true
 		case "device":
 			f.hasDeviceIndex = true
-		case "vad-pause":
-			f.hasVADPause = true
 		case "pause-threshold":
 			f.hasPauseThreshold = true
+		case "dead-air-reset":
+			f.hasDeadAirReset = true
 		case "debug":
 			f.hasDebug = true
 		case "heartbeat":
@@ -114,9 +115,9 @@ func newFlagSet() (*flag.FlagSet, *Flags) {
 
 	fs.IntVar(&f.DeviceIndex, "device", -1, "Audio input device index")
 
-	fs.BoolVar(&f.VADPause, "vad-pause", false, "Pause on VAD end-of-turn detection")
-
 	fs.Float64Var(&f.PauseThreshold, "pause-threshold", 2.0, "Silence threshold for line break (seconds)")
+
+	fs.DurationVar(&f.DeadAirReset, "dead-air-reset", 30*time.Second, "Reconnect if audio is active but no words for this duration (0 to disable)")
 
 	fs.BoolVar(&f.Debug, "debug", false, "Enable debug output")
 
@@ -146,8 +147,8 @@ func (f *Flags) ToOverrides() *config.FlagOverrides {
 		OutputFile:               f.OutputFile,
 		Gain:                     f.Gain,
 		DeviceIndex:              f.DeviceIndex,
-		VADPause:                 f.VADPause,
 		PauseThreshold:           f.PauseThreshold,
+		DeadAirReset:             f.DeadAirReset,
 		Debug:                    f.Debug,
 		HeartbeatInterval:        f.HeartbeatInterval,
 		ZoomDetection:            f.ZoomDetection,
@@ -156,8 +157,8 @@ func (f *Flags) ToOverrides() *config.FlagOverrides {
 		GoogleCredentialsFile:    f.GoogleCredentialsFile,
 		HasGain:                  f.hasGain,
 		HasDeviceIndex:           f.hasDeviceIndex,
-		HasVADPause:              f.hasVADPause,
 		HasPauseThreshold:        f.hasPauseThreshold,
+		HasDeadAirReset:          f.hasDeadAirReset,
 		HasDebug:                 f.hasDebug,
 		HasHeartbeatInterval:     f.hasHeartbeatInterval,
 		HasZoomDetection:         f.hasZoomDetection,

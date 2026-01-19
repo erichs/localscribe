@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"localscribe/internal/audio"
 	"localscribe/internal/client"
 	"localscribe/internal/config"
+	"localscribe/internal/diagnostics"
 	"localscribe/internal/meetings"
 	"localscribe/internal/plugins"
 	"localscribe/internal/processor"
@@ -23,6 +25,8 @@ import (
 var (
 	version = "dev"
 )
+
+const audioActiveThreshold = 0.01
 
 // Run executes the record subcommand with the provided arguments.
 func Run(args []string, stdout, stderr io.Writer) error {
@@ -88,6 +92,13 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 	pauseChan := make(chan os.Signal, 1)
 	signal.Notify(pauseChan, syscall.SIGTSTP)
 
+	// Set up signal handling for diagnostics (Ctrl+\)
+	diagChan := make(chan os.Signal, 1)
+	signal.Notify(diagChan, syscall.SIGQUIT)
+
+	// Create diagnostic tracker
+	diag := diagnostics.New()
+
 	// Pause state
 	var pauseMu sync.Mutex
 	paused := false
@@ -146,9 +157,10 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 		return fmt.Errorf("failed to connect to server: %w", err)
 	}
 	defer wsClient.Close()
+	diag.SetConnected(true, cfg.ServerURL)
 
 	fmt.Fprintf(stderr, "Connected. Transcribing to: %s\n", outputPath)
-	fmt.Fprintf(stderr, "Press Ctrl+Z to pause/resume, Ctrl+C to stop.\n\n")
+	fmt.Fprintf(stderr, "Press Ctrl+Z to pause/resume, Ctrl+\\ for diagnostics, Ctrl+C to stop.\n\n")
 
 	// Start heartbeat timestamp goroutine if enabled
 	heartbeatDone := make(chan struct{})
@@ -294,6 +306,40 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 		return p || r
 	}
 
+	// Dead air watchdog
+	deadAirCh := make(chan struct{}, 1)
+	if cfg.DeadAirReset.Duration() > 0 {
+		threshold := cfg.DeadAirReset.Duration()
+		interval := time.Second
+		if threshold < time.Second {
+			interval = threshold / 2
+			if interval < 100*time.Millisecond {
+				interval = 100 * time.Millisecond
+			}
+		}
+
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-ticker.C:
+					if shouldSkip() {
+						continue
+					}
+					if diag.IsDeadAir(threshold) {
+						select {
+						case deadAirCh <- struct{}{}:
+						default:
+						}
+					}
+				}
+			}
+		}()
+	}
+
 	// Goroutine to handle pause/resume signal (Ctrl+Z)
 	go func() {
 		for {
@@ -304,11 +350,30 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 				pauseMu.Lock()
 				paused = !paused
 				if paused {
+					diag.SetPaused(true)
 					fmt.Fprintf(stderr, "\n[PAUSED] Press Ctrl+Z to resume\n")
 				} else {
+					diag.SetPaused(false)
 					fmt.Fprintf(stderr, "[RESUMED]\n")
 				}
 				pauseMu.Unlock()
+			}
+		}
+	}()
+
+	// Goroutine to handle diagnostic dump signal (Ctrl+\)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-diagChan:
+				diagPath := "./diagnostic-info.txt"
+				if err := diag.DumpToFile(diagPath); err != nil {
+					fmt.Fprintf(stderr, "\n[DIAG] Failed to write diagnostics: %v\n", err)
+				} else {
+					fmt.Fprintf(stderr, "\n[DIAG] Diagnostic info written to %s\n", diagPath)
+				}
 			}
 		}
 	}()
@@ -330,16 +395,21 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 					if !ok {
 						return
 					}
+					level := rmsLevel(chunk)
+					diag.RecordAudioLevel(level, level >= audioActiveThreshold)
 					// Skip sending when paused or reconnecting
 					if shouldSkip() {
+						diag.RecordChunkDropped()
 						continue
 					}
 					if err := wsClient.SendAudio(chunk); err != nil {
+						diag.RecordSendError(err)
 						if !wsClient.IsClosed() {
 							workerErr <- fmt.Errorf("send error: %w", err)
 						}
 						return
 					}
+					diag.RecordChunkSent()
 				}
 			}
 		}()
@@ -355,6 +425,7 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 				default:
 					msg, err := wsClient.Receive()
 					if err != nil {
+						diag.RecordRecvError(err)
 						if !wsClient.IsClosed() {
 							workerErr <- fmt.Errorf("receive error: %w", err)
 						}
@@ -364,6 +435,7 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 					switch m := msg.(type) {
 					case *client.WordMessage:
 						output := postProc.ProcessWord(m.Text)
+						diag.RecordWordMessage(m.Text, output != "")
 						if output != "" {
 							if err := multiWriter.Write(output); err != nil {
 								logWriteErr("failed to write transcript output", err)
@@ -371,7 +443,9 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 						}
 
 					case *client.StepMessage:
-						if m.IsEndOfTurn() {
+						isEOT := m.IsEndOfTurn()
+						diag.RecordStepMessage(isEOT)
+						if isEOT {
 							if cfg.Debug {
 								fmt.Fprintf(stderr, "[DEBUG] End of turn detected\n")
 							}
@@ -382,6 +456,34 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 								}
 							}
 						}
+
+					case *client.EndWordMessage:
+						// EndWord marks word boundary timing - informational only
+						diag.RecordEndWordMessage()
+
+					case *client.ReadyMessage:
+						// Server is ready to accept audio
+						diag.RecordReadyMessage()
+						if cfg.Debug {
+							fmt.Fprintf(stderr, "[DEBUG] Server ready\n")
+						}
+
+					case *client.ErrorMessage:
+						// Server reported an error
+						diag.RecordErrorMessage(m.Message)
+						fmt.Fprintf(stderr, "[SERVER ERROR] %s\n", m.Message)
+
+					case *client.MarkerMessage:
+						// Marker sync acknowledgment
+						diag.RecordMarkerMessage()
+
+					default:
+						// Truly unknown message type
+						msgType := ""
+						if msg != nil {
+							msgType = msg.MessageType()
+						}
+						diag.RecordUnknownMessage(msgType)
 					}
 				}
 			}
@@ -392,6 +494,46 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 
 	workerDone, workerErr := startWorkers()
 
+	reconnect := func(reason string) bool {
+		if reason != "" {
+			fmt.Fprintf(stderr, "\n%s\n", reason)
+		}
+
+		// Set reconnecting state
+		reconnectMu.Lock()
+		reconnecting = true
+		reconnectMu.Unlock()
+		diag.SetReconnecting(true)
+		diag.SetConnected(false, cfg.ServerURL)
+
+		// Stop current workers
+		close(workerDone)
+
+		// Attempt reconnection
+		fmt.Fprintf(stderr, "Attempting to reconnect...\n")
+		reconnectErr := wsClient.Reconnect(0, func(attempt int, delay time.Duration) {
+			fmt.Fprintf(stderr, "  Reconnection attempt %d (waiting %v)...\n", attempt, delay)
+		})
+
+		if reconnectErr != nil {
+			fmt.Fprintf(stderr, "Reconnection failed: %v\n", reconnectErr)
+			return false
+		}
+
+		fmt.Fprintf(stderr, "Reconnected successfully.\n")
+		diag.SetConnected(true, cfg.ServerURL)
+		diag.ResetDeadAirTracking()
+
+		// Clear reconnecting state and restart workers
+		reconnectMu.Lock()
+		reconnecting = false
+		reconnectMu.Unlock()
+		diag.SetReconnecting(false)
+
+		workerDone, workerErr = startWorkers()
+		return true
+	}
+
 	// Main loop with reconnection handling
 	for {
 		select {
@@ -399,36 +541,15 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 			fmt.Fprintf(stderr, "\nStopping...\n")
 			goto shutdown
 
-		case err := <-workerErr:
-			fmt.Fprintf(stderr, "\nConnection error: %v\n", err)
-
-			// Set reconnecting state
-			reconnectMu.Lock()
-			reconnecting = true
-			reconnectMu.Unlock()
-
-			// Stop current workers
-			close(workerDone)
-
-			// Attempt reconnection
-			fmt.Fprintf(stderr, "Attempting to reconnect...\n")
-			reconnectErr := wsClient.Reconnect(0, func(attempt int, delay time.Duration) {
-				fmt.Fprintf(stderr, "  Reconnection attempt %d (waiting %v)...\n", attempt, delay)
-			})
-
-			if reconnectErr != nil {
-				fmt.Fprintf(stderr, "Reconnection failed: %v\n", reconnectErr)
+		case <-deadAirCh:
+			if !reconnect("[WARN] Dead air detected; reconnecting...") {
 				goto shutdown
 			}
 
-			fmt.Fprintf(stderr, "Reconnected successfully.\n")
-
-			// Clear reconnecting state and restart workers
-			reconnectMu.Lock()
-			reconnecting = false
-			reconnectMu.Unlock()
-
-			workerDone, workerErr = startWorkers()
+		case err := <-workerErr:
+			if !reconnect(fmt.Sprintf("Connection error: %v", err)) {
+				goto shutdown
+			}
 		}
 	}
 
@@ -462,4 +583,16 @@ shutdown:
 
 	fmt.Fprintf(stderr, "Transcript saved to: %s\n", outputPath)
 	return nil
+}
+
+func rmsLevel(samples []float32) float64 {
+	if len(samples) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, sample := range samples {
+		v := float64(sample)
+		sum += v * v
+	}
+	return math.Sqrt(sum / float64(len(samples)))
 }

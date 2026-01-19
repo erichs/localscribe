@@ -22,11 +22,13 @@ gain: 1.0
 # Use `localscribe -list-devices` to see available devices
 device_index: -1
 
-# Pause transcription on VAD end-of-turn detection (default: false)
-vad_pause: false
-
 # Silence threshold in seconds for inserting line breaks (default: 2.0)
 pause_threshold: 2.0
+
+# Duration to wait before reconnecting when audio is active but no words generated.
+# Works around ASR model bug with extended silence (see README for details).
+# Set to 0 to disable. Default: 30s
+dead_air_reset: 30s
 
 # Enable debug output (default: false)
 debug: false

@@ -13,15 +13,15 @@ import (
 
 // Config holds all configuration values for the client.
 type Config struct {
-	ServerURL        string  `yaml:"server_url"`
-	APIKey           string  `yaml:"api_key"`
-	OutputDir        string  `yaml:"output_dir"`
-	FilenameTemplate string  `yaml:"filename_template"`
-	Gain             float64 `yaml:"gain"`
-	DeviceIndex      int     `yaml:"device_index"`
-	VADPause         bool    `yaml:"vad_pause"`
-	PauseThreshold   float64 `yaml:"pause_threshold"`
-	Debug            bool    `yaml:"debug"`
+	ServerURL        string   `yaml:"server_url"`
+	APIKey           string   `yaml:"api_key"`
+	OutputDir        string   `yaml:"output_dir"`
+	FilenameTemplate string   `yaml:"filename_template"`
+	Gain             float64  `yaml:"gain"`
+	DeviceIndex      int      `yaml:"device_index"`
+	PauseThreshold   float64  `yaml:"pause_threshold"`
+	DeadAirReset     Duration `yaml:"dead_air_reset"`
+	Debug            bool     `yaml:"debug"`
 
 	// Metadata features
 	Metadata MetadataConfig `yaml:"metadata"`
@@ -124,8 +124,8 @@ type FlagOverrides struct {
 	FilenameTemplate string
 	Gain             float64
 	DeviceIndex      int
-	VADPause         bool
 	PauseThreshold   float64
+	DeadAirReset     time.Duration
 	Debug            bool
 	OutputFile       string // Direct output file path (overrides template)
 
@@ -139,8 +139,8 @@ type FlagOverrides struct {
 	// Has* fields indicate whether the flag was explicitly set
 	HasGain                  bool
 	HasDeviceIndex           bool
-	HasVADPause              bool
 	HasPauseThreshold        bool
+	HasDeadAirReset          bool
 	HasDebug                 bool
 	HasHeartbeatInterval     bool
 	HasZoomDetection         bool
@@ -158,8 +158,8 @@ func Default() *Config {
 		FilenameTemplate: "transcript_%Y%m%d_%H%M%S.txt",
 		Gain:             1.0,
 		DeviceIndex:      -1, // -1 means use default device
-		VADPause:         false,
 		PauseThreshold:   2.0,
+		DeadAirReset:     Duration(30 * time.Second),
 		Debug:            false,
 		Metadata: MetadataConfig{
 			HeartbeatInterval:     60, // 1 minute default
@@ -251,11 +251,11 @@ func (c *Config) MergeFlags(flags *FlagOverrides) *Config {
 	if flags.HasDeviceIndex {
 		merged.DeviceIndex = flags.DeviceIndex
 	}
-	if flags.HasVADPause {
-		merged.VADPause = flags.VADPause
-	}
 	if flags.HasPauseThreshold {
 		merged.PauseThreshold = flags.PauseThreshold
+	}
+	if flags.HasDeadAirReset {
+		merged.DeadAirReset = Duration(flags.DeadAirReset)
 	}
 	if flags.HasDebug {
 		merged.Debug = flags.Debug

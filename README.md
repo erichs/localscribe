@@ -118,7 +118,15 @@ Key settings:
 - `api_key`: API key passed as `kyutai-api-key`
 - `output_dir`: Where transcripts are written
 - `filename_template`: Filename template (e.g. `transcript_%Y%m%d_%H%M%S.txt`)
+- `dead_air_reset`: Duration before reconnecting when audio is active but no words are emitted (set `0` to disable)
 - `metadata.*`: heartbeat timestamps, meeting detection, and plugin hooks
+
+### Dead air reset
+
+Moshi's ASR model can enter a "silence attractor" after long pauses (steps keep flowing
+but no words are generated). Localscribe watches for local audio activity with no
+words and reconnects after `dead_air_reset` to clear the batch state. Set
+`dead_air_reset: 0` to disable the workaround.
 
 ## Usage
 

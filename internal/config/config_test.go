@@ -19,8 +19,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "transcript_%Y%m%d_%H%M%S.txt", cfg.FilenameTemplate)
 	assert.Equal(t, float64(1.0), cfg.Gain)
 	assert.Equal(t, -1, cfg.DeviceIndex)
-	assert.False(t, cfg.VADPause)
 	assert.Equal(t, 2.0, cfg.PauseThreshold)
+	assert.Equal(t, 30*time.Second, cfg.DeadAirReset.Duration())
 	assert.False(t, cfg.Debug)
 }
 
@@ -36,8 +36,8 @@ output_dir: /tmp/transcripts
 filename_template: recording_%Y%m%d.txt
 gain: 2.5
 device_index: 1
-vad_pause: true
 pause_threshold: 3.0
+dead_air_reset: 45s
 debug: true
 `
 	err := os.WriteFile(configPath, []byte(configContent), 0644)
@@ -52,8 +52,8 @@ debug: true
 	assert.Equal(t, "recording_%Y%m%d.txt", cfg.FilenameTemplate)
 	assert.Equal(t, 2.5, cfg.Gain)
 	assert.Equal(t, 1, cfg.DeviceIndex)
-	assert.True(t, cfg.VADPause)
 	assert.Equal(t, 3.0, cfg.PauseThreshold)
+	assert.Equal(t, 45*time.Second, cfg.DeadAirReset.Duration())
 	assert.True(t, cfg.Debug)
 }
 
@@ -149,12 +149,14 @@ func TestConfigMergeWithFlags(t *testing.T) {
 	base := Default()
 
 	flags := &FlagOverrides{
-		ServerURL: "ws://custom:8080",
-		OutputDir: "/custom/output",
-		Gain:      5.0,
-		Debug:     true,
-		HasGain:   true,
-		HasDebug:  true,
+		ServerURL:       "ws://custom:8080",
+		OutputDir:       "/custom/output",
+		Gain:            5.0,
+		DeadAirReset:    45 * time.Second,
+		Debug:           true,
+		HasGain:         true,
+		HasDeadAirReset: true,
+		HasDebug:        true,
 	}
 
 	merged := base.MergeFlags(flags)
@@ -163,6 +165,7 @@ func TestConfigMergeWithFlags(t *testing.T) {
 	assert.Equal(t, "ws://custom:8080", merged.ServerURL)
 	assert.Equal(t, "/custom/output", merged.OutputDir)
 	assert.Equal(t, 5.0, merged.Gain)
+	assert.Equal(t, Duration(45*time.Second), merged.DeadAirReset)
 	assert.True(t, merged.Debug)
 
 	// Non-overridden values (from default)
@@ -178,8 +181,8 @@ func TestConfigMergeWithEmptyFlags(t *testing.T) {
 		FilenameTemplate: "original_%Y.txt",
 		Gain:             2.0,
 		DeviceIndex:      3,
-		VADPause:         true,
 		PauseThreshold:   4.0,
+		DeadAirReset:     Duration(60 * time.Second),
 		Debug:            true,
 	}
 
@@ -194,8 +197,8 @@ func TestConfigMergeWithEmptyFlags(t *testing.T) {
 	assert.Equal(t, base.FilenameTemplate, merged.FilenameTemplate)
 	assert.Equal(t, base.Gain, merged.Gain)
 	assert.Equal(t, base.DeviceIndex, merged.DeviceIndex)
-	assert.Equal(t, base.VADPause, merged.VADPause)
 	assert.Equal(t, base.PauseThreshold, merged.PauseThreshold)
+	assert.Equal(t, base.DeadAirReset, merged.DeadAirReset)
 	assert.Equal(t, base.Debug, merged.Debug)
 }
 

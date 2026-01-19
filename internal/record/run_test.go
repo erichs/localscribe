@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,19 +132,27 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
-			name: "vad-pause flag",
-			args: []string{"-vad-pause"},
-			check: func(t *testing.T, f *Flags) {
-				assert.True(t, f.VADPause)
-				assert.True(t, f.hasVADPause)
-			},
-		},
-		{
 			name: "pause-threshold flag",
 			args: []string{"-pause-threshold", "3.5"},
 			check: func(t *testing.T, f *Flags) {
 				assert.Equal(t, 3.5, f.PauseThreshold)
 				assert.True(t, f.hasPauseThreshold)
+			},
+		},
+		{
+			name: "dead-air-reset flag",
+			args: []string{"-dead-air-reset", "45s"},
+			check: func(t *testing.T, f *Flags) {
+				assert.Equal(t, 45*time.Second, f.DeadAirReset)
+				assert.True(t, f.hasDeadAirReset)
+			},
+		},
+		{
+			name: "dead-air-reset disabled",
+			args: []string{"-dead-air-reset", "0"},
+			check: func(t *testing.T, f *Flags) {
+				assert.Equal(t, time.Duration(0), f.DeadAirReset)
+				assert.True(t, f.hasDeadAirReset)
 			},
 		},
 		{
@@ -222,13 +231,13 @@ func TestFlagsToOverrides(t *testing.T) {
 		FilenameTemplate:  "test_%Y.txt",
 		Gain:              2.5,
 		DeviceIndex:       1,
-		VADPause:          true,
 		PauseThreshold:    3.0,
+		DeadAirReset:      45 * time.Second,
 		Debug:             true,
 		hasGain:           true,
 		hasDeviceIndex:    true,
-		hasVADPause:       true,
 		hasPauseThreshold: true,
+		hasDeadAirReset:   true,
 		hasDebug:          true,
 	}
 
@@ -240,13 +249,13 @@ func TestFlagsToOverrides(t *testing.T) {
 	assert.Equal(t, "test_%Y.txt", o.FilenameTemplate)
 	assert.Equal(t, 2.5, o.Gain)
 	assert.Equal(t, 1, o.DeviceIndex)
-	assert.True(t, o.VADPause)
 	assert.Equal(t, 3.0, o.PauseThreshold)
+	assert.Equal(t, 45*time.Second, o.DeadAirReset)
 	assert.True(t, o.Debug)
 	assert.True(t, o.HasGain)
 	assert.True(t, o.HasDeviceIndex)
-	assert.True(t, o.HasVADPause)
 	assert.True(t, o.HasPauseThreshold)
+	assert.True(t, o.HasDeadAirReset)
 	assert.True(t, o.HasDebug)
 }
 
@@ -311,13 +320,14 @@ func TestFlagsWithoutExplicitSet(t *testing.T) {
 	// None of the "has" flags should be set
 	assert.False(t, f.hasGain)
 	assert.False(t, f.hasDeviceIndex)
-	assert.False(t, f.hasVADPause)
 	assert.False(t, f.hasPauseThreshold)
+	assert.False(t, f.hasDeadAirReset)
 	assert.False(t, f.hasDebug)
 
 	o := f.ToOverrides()
 	assert.False(t, o.HasGain)
 	assert.False(t, o.HasDeviceIndex)
+	assert.False(t, o.HasDeadAirReset)
 }
 
 func TestMetadataFormatPrefix(t *testing.T) {

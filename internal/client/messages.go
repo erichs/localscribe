@@ -60,6 +60,53 @@ func (m *StepMessage) IsEndOfTurn() bool {
 	return m.Prs[2][0] > 0.5
 }
 
+// IsSpeechPresent returns true if VAD thinks speech is present.
+// Uses Prs[0][0] < 0.4 as the threshold (lower values = more confident speech).
+func (m *StepMessage) IsSpeechPresent() bool {
+	if len(m.Prs) == 0 {
+		return false
+	}
+	if len(m.Prs[0]) == 0 {
+		return false
+	}
+	return m.Prs[0][0] < 0.4
+}
+
+// EndWordMessage is received from server to mark word boundary timing.
+type EndWordMessage struct {
+	Type     string  `msgpack:"type"`
+	StopTime float64 `msgpack:"stop_time"`
+}
+
+// MessageType returns the message type identifier.
+func (m *EndWordMessage) MessageType() string { return m.Type }
+
+// ReadyMessage is received from server when connection is ready.
+type ReadyMessage struct {
+	Type string `msgpack:"type"`
+}
+
+// MessageType returns the message type identifier.
+func (m *ReadyMessage) MessageType() string { return m.Type }
+
+// ErrorMessage is received from server when an error occurs.
+type ErrorMessage struct {
+	Type    string `msgpack:"type"`
+	Message string `msgpack:"message"`
+}
+
+// MessageType returns the message type identifier.
+func (m *ErrorMessage) MessageType() string { return m.Type }
+
+// MarkerMessage is received from server as sync acknowledgment.
+type MarkerMessage struct {
+	Type string `msgpack:"type"`
+	ID   int64  `msgpack:"id"`
+}
+
+// MessageType returns the message type identifier.
+func (m *MarkerMessage) MessageType() string { return m.Type }
+
 // UnknownMessage represents an unrecognized message type.
 type UnknownMessage struct {
 	Type string
@@ -92,6 +139,32 @@ func DecodeMessage(data []byte) (Message, error) {
 		return &StepMessage{
 			Type: msgType,
 			Prs:  prs,
+		}, nil
+
+	case "EndWord":
+		stopTime, _ := raw["stop_time"].(float64)
+		return &EndWordMessage{
+			Type:     msgType,
+			StopTime: stopTime,
+		}, nil
+
+	case "Ready":
+		return &ReadyMessage{
+			Type: msgType,
+		}, nil
+
+	case "Error":
+		message, _ := raw["message"].(string)
+		return &ErrorMessage{
+			Type:    msgType,
+			Message: message,
+		}, nil
+
+	case "Marker":
+		id, _ := raw["id"].(int64)
+		return &MarkerMessage{
+			Type: msgType,
+			ID:   id,
 		}, nil
 
 	default:
