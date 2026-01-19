@@ -93,6 +93,17 @@ rm ~/bin/moshi-server-run
 make build
 ```
 
+### macOS: Microphone Indicator
+
+By default, CLI tools don't trigger the orange microphone indicator in the macOS menu bar. If you want the indicator to appear when localscribe is recording, build it as a signed app bundle:
+
+```bash
+make app
+./LocalScribe.app/Contents/MacOS/localscribe record
+```
+
+This creates a `LocalScribe.app` bundle with the necessary `NSMicrophoneUsageDescription` and ad-hoc code signature. The app bundle is gitignored.
+
 ## Configuration
 
 Copy the example config and edit as needed:

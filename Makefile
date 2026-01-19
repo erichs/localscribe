@@ -55,3 +55,37 @@ gosec:
 	@echo "✅ Security scan passed - no issues found!"
 
 lint: fmt-check vet revive gosec
+
+# Build macOS .app bundle with microphone indicator support (ad-hoc signed)
+APP_NAME := LocalScribe.app
+APP_CONTENTS := $(APP_NAME)/Contents
+APP_MACOS := $(APP_CONTENTS)/MacOS
+
+define INFO_PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>localscribe</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.localscribe</string>
+    <key>CFBundleName</key>
+    <string>LocalScribe</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>LocalScribe needs microphone access to transcribe audio.</string>
+</dict>
+</plist>
+endef
+export INFO_PLIST
+
+.PHONY: app
+app: build
+	@echo "Creating macOS app bundle..."
+	@mkdir -p $(APP_MACOS)
+	@cp localscribe $(APP_MACOS)/
+	@echo "$$INFO_PLIST" > $(APP_CONTENTS)/Info.plist
+	@codesign --sign - --entitlements config/entitlements.plist --options runtime --force $(APP_NAME)
+	@echo "Created $(APP_NAME) - run with: ./$(APP_NAME)/Contents/MacOS/localscribe"
