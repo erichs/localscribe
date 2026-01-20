@@ -16,7 +16,8 @@ func TestTrackerDeadAirDetection(t *testing.T) {
 		t.Fatal("expected dead air to be false without audio activity")
 	}
 
-	tracker.RecordAudioLevel(0.02, true)
+	tracker.RecordAudioLevel(0.05)
+	tracker.RecordWordMessage("baseline", true)
 	if tracker.IsDeadAir(threshold) {
 		t.Fatal("expected dead air to be false before threshold duration")
 	}
@@ -24,7 +25,9 @@ func TestTrackerDeadAirDetection(t *testing.T) {
 	time.Sleep(threshold + 25*time.Millisecond)
 
 	tracker.RecordStepMessage(false)
-	tracker.RecordAudioLevel(0.02, true)
+	for i := 0; i < audioActiveMinStreak; i++ {
+		tracker.RecordAudioLevel(0.2)
+	}
 
 	if !tracker.IsDeadAir(threshold) {
 		t.Fatal("expected dead air to be true after sustained audio without words")
@@ -40,7 +43,11 @@ func TestTrackerDeadAirSuppressedByRecentWord(t *testing.T) {
 	time.Sleep(threshold + 25*time.Millisecond)
 
 	tracker.RecordStepMessage(false)
-	tracker.RecordAudioLevel(0.02, true)
+	tracker.RecordAudioLevel(0.05)
+	tracker.RecordWordMessage("baseline", true)
+	for i := 0; i < audioActiveMinStreak; i++ {
+		tracker.RecordAudioLevel(0.2)
+	}
 	tracker.RecordWordMessage("hello", true)
 
 	if tracker.IsDeadAir(threshold) {

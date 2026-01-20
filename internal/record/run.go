@@ -3,6 +3,7 @@ package record
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -25,8 +26,6 @@ import (
 var (
 	version = "dev"
 )
-
-const audioActiveThreshold = 0.01
 
 // Run executes the record subcommand with the provided arguments.
 func Run(args []string, stdout, stderr io.Writer) error {
@@ -87,6 +86,11 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	stopChan := make(chan struct{})
+	go func() {
+		<-sigChan
+		close(stopChan)
+	}()
 
 	// Set up signal handling for pause/resume (Ctrl+Z)
 	pauseChan := make(chan os.Signal, 1)
@@ -98,6 +102,13 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 
 	// Create diagnostic tracker
 	diag := diagnostics.New()
+
+	reconnectCtx, cancelReconnect := context.WithCancel(context.Background())
+	defer cancelReconnect()
+	go func() {
+		<-stopChan
+		cancelReconnect()
+	}()
 
 	// Pause state
 	var pauseMu sync.Mutex
@@ -396,7 +407,7 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 						return
 					}
 					level := rmsLevel(chunk)
-					diag.RecordAudioLevel(level, level >= audioActiveThreshold)
+					diag.RecordAudioLevel(level)
 					// Skip sending when paused or reconnecting
 					if shouldSkip() {
 						diag.RecordChunkDropped()
@@ -511,11 +522,19 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 
 		// Attempt reconnection
 		fmt.Fprintf(stderr, "Attempting to reconnect...\n")
-		reconnectErr := wsClient.Reconnect(0, func(attempt int, delay time.Duration) {
+		reconnectErr := wsClient.ReconnectContext(reconnectCtx, 0, func(attempt int, delay time.Duration) {
+			select {
+			case <-stopChan:
+				return
+			default:
+			}
 			fmt.Fprintf(stderr, "  Reconnection attempt %d (waiting %v)...\n", attempt, delay)
 		})
 
 		if reconnectErr != nil {
+			if errors.Is(reconnectErr, context.Canceled) {
+				return false
+			}
 			fmt.Fprintf(stderr, "Reconnection failed: %v\n", reconnectErr)
 			return false
 		}
@@ -537,7 +556,7 @@ func runTranscription(cfg *config.Config, stdout, stderr io.Writer) error {
 	// Main loop with reconnection handling
 	for {
 		select {
-		case <-sigChan:
+		case <-stopChan:
 			fmt.Fprintf(stderr, "\nStopping...\n")
 			goto shutdown
 

@@ -45,9 +45,12 @@ type Tracker struct {
 	startTime    time.Time
 
 	// Audio state (for dead air detection)
-	lastAudioActiveAt time.Time
-	lastAudioLevel    float64
-	lastStepAt        time.Time // Last time we received a Step message
+	lastAudioActiveAt  time.Time
+	lastAudioLevel     float64
+	audioBaseline      float64
+	audioBaselineCount int
+	audioActiveStreak  int
+	lastStepAt         time.Time // Last time we received a Step message
 
 	// Errors
 	lastRecvErr   error
@@ -66,6 +69,14 @@ type Tracker struct {
 	// Last word received (for debugging)
 	lastWord string
 }
+
+const (
+	audioBaselineAlpha    = 0.2
+	audioActiveFactor     = 1.8
+	audioMinActiveRMS     = 0.02
+	audioBaselineMinValue = 0.01
+	audioActiveMinStreak  = 5
+)
 
 // New creates a new diagnostic tracker.
 func New() *Tracker {
@@ -99,6 +110,7 @@ func (t *Tracker) RecordWordMessage(word string, outputProduced bool) {
 	if outputProduced {
 		t.lastWordAt = time.Now()
 		t.lastOutputAt = time.Now()
+		t.updateAudioBaselineLocked()
 	}
 }
 
@@ -116,12 +128,17 @@ func (t *Tracker) RecordStepMessage(endOfTurn bool) {
 }
 
 // RecordAudioLevel records the most recent audio energy level.
-func (t *Tracker) RecordAudioLevel(level float64, active bool) {
+func (t *Tracker) RecordAudioLevel(level float64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.lastAudioLevel = level
-	if active {
-		t.lastAudioActiveAt = time.Now()
+	if t.isAudioActiveLocked(level) {
+		t.audioActiveStreak++
+		if t.audioActiveStreak >= audioActiveMinStreak {
+			t.lastAudioActiveAt = time.Now()
+		}
+	} else {
+		t.audioActiveStreak = 0
 	}
 }
 
@@ -175,6 +192,41 @@ func (t *Tracker) ResetDeadAirTracking() {
 	t.lastStepAt = time.Time{}
 	// Keep lastWordAt as it tracks overall session, but reconnection resets it
 	t.lastWordAt = time.Time{}
+}
+
+func (t *Tracker) updateAudioBaselineLocked() {
+	level := t.lastAudioLevel
+	if level <= 0 {
+		return
+	}
+	if level < audioBaselineMinValue {
+		level = audioBaselineMinValue
+	}
+	if t.audioBaselineCount == 0 {
+		t.audioBaseline = level
+		t.audioBaselineCount = 1
+		return
+	}
+	t.audioBaseline = (1-audioBaselineAlpha)*t.audioBaseline + audioBaselineAlpha*level
+	t.audioBaselineCount++
+}
+
+func (t *Tracker) audioActiveThresholdLocked() float64 {
+	threshold := audioMinActiveRMS
+	if t.audioBaselineCount > 0 {
+		threshold = t.audioBaseline * audioActiveFactor
+		if threshold < audioMinActiveRMS {
+			threshold = audioMinActiveRMS
+		}
+	}
+	return threshold
+}
+
+func (t *Tracker) isAudioActiveLocked(level float64) bool {
+	if t.audioBaselineCount == 0 {
+		return false
+	}
+	return level >= t.audioActiveThresholdLocked()
 }
 
 // RecordEndWordMessage records receipt of an EndWord message.
@@ -365,6 +417,15 @@ func (t *Tracker) Format() string {
 		b.WriteString("Last audio activity: NEVER\n")
 	}
 	b.WriteString(fmt.Sprintf("Last audio level (RMS): %.5f\n", t.lastAudioLevel))
+	if t.audioBaselineCount > 0 {
+		b.WriteString(fmt.Sprintf("Audio baseline (RMS): %.5f (%d samples)\n", t.audioBaseline, t.audioBaselineCount))
+		b.WriteString(fmt.Sprintf("Audio activity threshold (RMS): %.5f\n", t.audioActiveThresholdLocked()))
+		b.WriteString(fmt.Sprintf("Audio activity streak: %d/%d\n", t.audioActiveStreak, audioActiveMinStreak))
+	} else {
+		b.WriteString("Audio baseline (RMS): UNSET\n")
+		b.WriteString(fmt.Sprintf("Audio activity threshold (RMS): %.5f\n", t.audioActiveThresholdLocked()))
+		b.WriteString(fmt.Sprintf("Audio activity streak: %d/%d\n", t.audioActiveStreak, audioActiveMinStreak))
+	}
 
 	if t.lastWord != "" {
 		b.WriteString(fmt.Sprintf("Last word text: %q\n", t.lastWord))

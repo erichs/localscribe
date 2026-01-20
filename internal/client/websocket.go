@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
@@ -45,9 +46,16 @@ func Connect(serverURL, apiKey string) (*Client, error) {
 }
 
 // Reconnect attempts to reconnect with exponential backoff.
-// Returns nil on successful reconnection, error if all attempts fail or context is cancelled.
+// Returns nil on successful reconnection, error if all attempts fail.
 // maxAttempts of 0 means unlimited attempts.
 func (c *Client) Reconnect(maxAttempts int, onAttempt func(attempt int, delay time.Duration)) error {
+	return c.ReconnectContext(context.Background(), maxAttempts, onAttempt)
+}
+
+// ReconnectContext attempts to reconnect with exponential backoff, honoring context cancellation.
+// Returns nil on successful reconnection, error if all attempts fail or context is cancelled.
+// maxAttempts of 0 means unlimited attempts.
+func (c *Client) ReconnectContext(ctx context.Context, maxAttempts int, onAttempt func(attempt int, delay time.Duration)) error {
 	c.mu.Lock()
 	// Close existing connection if any
 	if c.conn != nil {
@@ -70,11 +78,21 @@ func (c *Client) Reconnect(maxAttempts int, onAttempt func(attempt int, delay ti
 			return websocket.ErrCloseSent
 		}
 
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		if onAttempt != nil {
 			onAttempt(attempt, delay)
 		}
 
-		time.Sleep(delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 
 		url := buildURL(c.serverURL)
 		header := make(http.Header)
